@@ -158,6 +158,8 @@ GN_ARGS += "ozone_auto_platforms=false"
 # Mash support
 GN_ARGS += "enable_package_mash_services = true"
 
+# VA support
+GN_ARGS += "proprietary_codecs=true"
 
 # API keys for accessing Google services. By default, we use an invalid key
 # only to prevent the "you are missing an API key" infobar from being shown on
@@ -170,6 +172,7 @@ GOOGLE_DEFAULT_CLIENT_ID ??= "invalid-client-id"
 GOOGLE_DEFAULT_CLIENT_SECRET ??= "invalid-client-secret"
 GN_ARGS += '\
         google_api_key="${GOOGLE_API_KEY}" \
+        ffmpeg_branding="Chrome" \
         google_default_client_id="${GOOGLE_DEFAULT_CLIENT_ID}" \
         google_default_client_secret="${GOOGLE_DEFAULT_CLIENT_SECRET}" \
         '
