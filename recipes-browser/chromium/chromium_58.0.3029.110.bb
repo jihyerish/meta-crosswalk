@@ -11,15 +11,6 @@ SRC_URI += " \
         file://v8-qemu-wrapper.patch \
         file://yocto-bug10635.patch \
         file://0001-Fix-GN-bootstrap.patch \
-        file://0001-Build-fix-in-dmabuf-support.patch \
-        file://0002-enable-i915-driver.patch \
-        file://0003-Add-CrOS-source-files-for-display-management.patch \
-        file://0004-ozone_demo.patch \
-        file://0005-Make-mus_demo-work.patch \
-        file://0006-Fix-the-display-size-problem.patch \
-        file://0007-Make-it-Work-like-CrOS.patch \
-        file://0008-Add-support-for-ash-host-window-bounds.patch \
-        file://0009-Fix-crash-that-occures-when-handling-mouse-events.patch \
         ${@bb.utils.contains('PACKAGECONFIG', 'root-profile', 'file://root-user-profile.patch', '', d)} \
         "
 
@@ -110,7 +101,7 @@ GN_ARGS = "\
 # (debug, release, official) but for historical reasons there are two
 # separate flags.
 # See also: https://groups.google.com/a/chromium.org/d/msg/chromium-dev/hkcb6AOX5gE/PPT1ukWoBwAJ
-GN_ARGS += "is_debug=false is_official_build=true"
+GN_ARGS += "is_debug=false"
 
 # Disable Chrome Remote Desktop (aka Chromoting) support. Building host support
 # (so that the machine running this recipe can be controlled remotely from
@@ -156,10 +147,11 @@ GN_ARGS += "ozone_platform_wayland=false"
 GN_ARGS += "ozone_auto_platforms=false"
 
 # Mash support
-GN_ARGS += "enable_package_mash_services = true"
+GN_ARGS += "enable_package_mash_services=true"
 
-# VA support
-GN_ARGS += "proprietary_codecs=true"
+GN_ARGS += "remove_webcore_debug_symbols=true"
+GN_ARGS += "symbol_level=0"
+GN_ARGS += "use_gold=true"
 
 # API keys for accessing Google services. By default, we use an invalid key
 # only to prevent the "you are missing an API key" infobar from being shown on
@@ -259,6 +251,10 @@ do_configure() {
 }
 
 do_compile() {
+    echo "Hi compile"
+    echo ${S} 
+    cd ${S}
+    cd out/Release
     DRV_I915=1 ninja -v "${PARALLEL_MAKE}" chrome chrome_sandbox ozone_demo gbm_unittests mash:all mus_demo
 }
 
