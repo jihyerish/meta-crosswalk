@@ -25,7 +25,6 @@ COMPATIBLE_MACHINE_x86-64 = "(.*)"
 
 DEPENDS = "\
     alsa-lib \
-    atk \
     bison-native \
     dbus \
     expat \
@@ -35,20 +34,9 @@ DEPENDS = "\
     glib-2.0 \
     gn-native \
     gperf-native \
-    gtk+3 \
     jpeg \
     libwebp \
-    libx11 \
-    libxcomposite \
-    libxcursor \
-    libxdamage \
-    libxext \
-    libxfixes \
-    libxi \
     libxml2 \
-    libxrandr \
-    libxrender \
-    libxscrnsaver \
     libxslt \
     libxtst \
     ninja-native \
@@ -164,6 +152,24 @@ GN_ARGS += "allow_posix_link_time_opt=false"
 # See https://groups.google.com/a/chromium.org/d/msg/chromium-packagers/ECWC57W7E0k/9Kc5UAmyDAAJ
 GN_ARGS += "fieldtrial_testing_like_official_build=true"
 
+# Enable ozone_gbm
+GN_ARGS += "use_ozone=true"
+GN_ARGS += "ozone_platform_gbm=true"
+GN_ARGS += "ozone_platform_x11=false"
+GN_ARGS += "ozone_platform_wayland=false"
+
+# Enable ozone-gbm only
+GN_ARGS += "ozone_auto_platforms=false"
+
+# Mash support
+GN_ARGS += "enable_package_mash_services=true"
+
+# VA support
+GN_ARGS += "proprietary_codecs=true"
+
+GN_ARGS += "remove_webcore_debug_symbols=true"
+GN_ARGS += "use_gold=true"
+
 # API keys for accessing Google services. By default, we use an invalid key
 # only to prevent the "you are missing an API key" infobar from being shown on
 # startup.
@@ -175,6 +181,7 @@ GOOGLE_DEFAULT_CLIENT_ID ??= "invalid-client-id"
 GOOGLE_DEFAULT_CLIENT_SECRET ??= "invalid-client-secret"
 GN_ARGS += '\
         google_api_key="${GOOGLE_API_KEY}" \
+        ffmpeg_branding="Chrome" \
         google_default_client_id="${GOOGLE_DEFAULT_CLIENT_ID}" \
         google_default_client_secret="${GOOGLE_DEFAULT_CLIENT_SECRET}" \
         '
@@ -298,7 +305,13 @@ do_install() {
 	ln -s ${libdir}/chromium/chromium-wrapper ${D}${bindir}/chromium
 
 	install -m 4755 chrome_sandbox ${D}${libdir}/chromium/chrome-sandbox
-	install -m 0755 chrome ${D}${libdir}/chromium/chromium-bin
+	install -m 0755 chrome ${D}${libdir}/chromium
+	install -m 0755 ozone_demo ${D}${libdir}/chromium
+	install -m 0755 mash ${D}${libdir}/chromium
+	install -m 0755 *.service ${D}${libdir}/chromium
+	install -m 0644 *.json ${D}${libdir}/chromium
+	install -m 0644 *.pak ${D}${libdir}/chromium
+    install -m 0644 *.so ${D}${libdir}/chromium/
 	install -m 0644 *.bin ${D}${libdir}/chromium/
 	install -m 0644 chrome_*.pak ${D}${libdir}/chromium/
 	install -m 0644 icudtl.dat ${D}${libdir}/chromium/icudtl.dat
