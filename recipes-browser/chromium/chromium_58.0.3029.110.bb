@@ -146,6 +146,9 @@ GN_ARGS += "ozone_platform_wayland=false"
 # Enable ozone-gbm only
 GN_ARGS += "ozone_auto_platforms=false"
 
+# VA support
+GN_ARGS += "proprietary_codecs=true"
+
 # Mash support
 GN_ARGS += "enable_package_mash_services=true"
 
