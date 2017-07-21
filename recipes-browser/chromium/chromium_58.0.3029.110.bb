@@ -21,6 +21,7 @@ SRC_URI += " \
         file://0008-Add-support-for-ash-host-window-bounds.patch \
         file://0009-Fix-crash-that-occures-when-handling-mouse-events.patch \
         file://0010-Enable-CMAA-in-Linux-on-Intel-GPU.patch \
+        file://0011-Add-logs-to-see-whether-GPU-acceleration-features-ar.patch \
         ${@bb.utils.contains('PACKAGECONFIG', 'root-profile', 'file://root-user-profile.patch', '', d)} \
         "
 
