@@ -22,6 +22,7 @@ SRC_URI += " \
         file://0009-Fix-crash-that-occures-when-handling-mouse-events.patch \
         file://0010-Enable-CMAA-in-Linux-on-Intel-GPU.patch \
         file://0011-Add-logs-to-see-whether-GPU-acceleration-features-ar.patch \
+        file://0012-Add-support-for-native-gpu-memory-buffer-for-Chromiu.patch \
         ${@bb.utils.contains('PACKAGECONFIG', 'root-profile', 'file://root-user-profile.patch', '', d)} \
         "
 
