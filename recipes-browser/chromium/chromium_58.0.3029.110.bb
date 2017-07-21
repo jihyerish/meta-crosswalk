@@ -20,6 +20,7 @@ SRC_URI += " \
         file://0007-Make-it-Work-like-CrOS.patch \
         file://0008-Add-support-for-ash-host-window-bounds.patch \
         file://0009-Fix-crash-that-occures-when-handling-mouse-events.patch \
+        file://0010-Enable-CMAA-in-Linux-on-Intel-GPU.patch \
         ${@bb.utils.contains('PACKAGECONFIG', 'root-profile', 'file://root-user-profile.patch', '', d)} \
         "
 
