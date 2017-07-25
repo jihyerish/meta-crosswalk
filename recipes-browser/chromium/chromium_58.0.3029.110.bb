@@ -257,7 +257,7 @@ do_compile() {
     echo ${S} 
     cd ${S}
     cd out/Release
-    DRV_I915=1 ninja -v "${PARALLEL_MAKE}" chrome chrome_sandbox ozone_demo gbm_unittests mash:all mus_demo
+    DRV_I915=1 ninja -v "${PARALLEL_MAKE}" chrome chrome_sandbox ozone_demo gbm_unittests mash:all mus_demo zero_copy_test
 }
 
 do_install() {
