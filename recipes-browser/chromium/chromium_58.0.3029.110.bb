@@ -153,7 +153,7 @@ GN_ARGS += "proprietary_codecs=true"
 GN_ARGS += "enable_package_mash_services=true"
 
 GN_ARGS += "remove_webcore_debug_symbols=true"
-GN_ARGS += "symbol_level=0"
+GN_ARGS += "symbol_level=2"
 GN_ARGS += "use_gold=true"
 
 # API keys for accessing Google services. By default, we use an invalid key
