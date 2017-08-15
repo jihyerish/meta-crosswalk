@@ -11,6 +11,31 @@ SRC_URI += " \
         file://v8-qemu-wrapper.patch \
         file://yocto-bug10635.patch \
         file://0001-WebrtcAudioPrivateSetAudioExperimentsFunction-dummy-.patch \
+        file://0001-enable-i915-driver.patch \
+        file://0002-Fix-build-breaks-in-HarfBuzz.patch \
+        file://0003-Make-mash-work-on-ozone-gbm.patch \
+        file://0004-aura-demo.patch \
+        file://0005-ozone_demo.patch \
+        file://0006-Fix-the-display-size-problem.patch \
+        file://0007-Make-mus_demo-work.patch \
+        file://0008-Make-it-Work-like-CrOS.patch \
+        file://0009-Check-the-number-of-displays-befor-removing-it.patch \
+        file://0010-change-the-default-display-size.patch \
+        file://0011-Fix-crash-that-occures-when-handling-mouse-events.patch \
+        file://0012-Enable-CMAA-in-Linux-on-Intel-GPU.patch \
+        file://0013-Add-logs-to-see-whether-GPU-acceleration-features-ar.patch \
+        file://0014-Add-support-for-native-gpu-memory-buffer-for-Chromiu.patch \
+        file://0015-Intel-GPU-specific-optimization-in-GLES.patch \
+        file://0016-Add-drm_test.patch \
+        file://0017-debug-Mus-mode.patch \
+        file://0018-Enable-Intel-GPU-optimizations.patch \
+        file://0019-Add-support-for-Mus-mode.patch \
+        file://0020-debug-chrome.patch \
+        file://0021-Enable-CrOS-code-for-GPU-process.patch \
+        file://0022-Debug-command-buffer.patch \
+        file://0023-skip-nullptr-return-to-avoid-crash-while-creating-a-.patch \
+        file://0024-Temp-avoid-crash.patch \
+        file://0025-Temp-allow-to-upload-textures.patch \
         ${@bb.utils.contains('PACKAGECONFIG', 'root-profile', 'file://root-user-profile.patch', '', d)} \
         "
 
