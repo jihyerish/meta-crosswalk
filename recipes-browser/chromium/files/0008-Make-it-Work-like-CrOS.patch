@@ -1,0 +1,81 @@
+From 4508402d770f147ad5d8186b29d8163e9543cddc Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Tue, 20 Jun 2017 17:47:42 -0700
+Subject: [PATCH 08/26] Make it Work like CrOS
+
+---
+ ui/display/manager/display_manager.cc | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/ui/display/manager/display_manager.cc b/ui/display/manager/display_manager.cc
+index 1873139..2a8faff 100644
+--- a/ui/display/manager/display_manager.cc
++++ b/ui/display/manager/display_manager.cc
+@@ -38,6 +38,7 @@
+ #include "ui/gfx/geometry/rect.h"
+ #include "ui/gfx/geometry/size_conversions.h"
+ #include "ui/strings/grit/ui_strings.h"
++#include <iostream>
+ 
+ #if defined(OS_CHROMEOS)
+ #include "base/sys_info.h"
+@@ -142,6 +143,11 @@ DisplayManager::DisplayManager(std::unique_ptr<Screen> screen)
+   change_display_upon_host_resize_ = !configure_displays_;
+   unified_desktop_enabled_ = base::CommandLine::ForCurrentProcess()->HasSwitch(
+       ::switches::kEnableUnifiedDesktop);
++#else
++  // ozone-gbm without CrOS
++  configure_displays_ = true;
++  change_display_upon_host_resize_ = false;
++  unified_desktop_enabled_ = true;
+ #endif
+ }
+ 
+@@ -548,7 +554,7 @@ void DisplayManager::SetColorCalibrationProfile(
+ void DisplayManager::OnNativeDisplaysChanged(
+     const DisplayInfoList& updated_displays) {
+   if (updated_displays.empty()) {
+-    VLOG(1) << "OnNativeDisplaysChanged(0): # of current displays="
++    std::cout << "OnNativeDisplaysChanged(0): # of current displays="
+             << active_display_list_.size();
+     // If the device is booted without display, or chrome is started
+     // without --ash-host-window-bounds on linux desktop, use the
+@@ -577,9 +583,9 @@ void DisplayManager::OnNativeDisplaysChanged(
+   std::set<gfx::Point> origins;
+ 
+   if (updated_displays.size() == 1) {
+-    VLOG(1) << "OnNativeDisplaysChanged(1):" << updated_displays[0].ToString();
++	  std::cout  << "OnNativeDisplaysChanged(1):" << updated_displays[0].ToString();
+   } else {
+-    VLOG(1) << "OnNativeDisplaysChanged(" << updated_displays.size()
++	  std::cout  << "OnNativeDisplaysChanged(" << updated_displays.size()
+             << ") [0]=" << updated_displays[0].ToString()
+             << ", [1]=" << updated_displays[1].ToString();
+   }
+@@ -642,7 +648,7 @@ void DisplayManager::OnNativeDisplaysChanged(
+     }
+   }
+ 
+-#if defined(OS_CHROMEOS)
++//#if defined(OS_CHROMEOS)
+   if (!configure_displays_ && new_display_info_list.size() > 1) {
+     DisplayIdList list = GenerateDisplayIdList(
+         new_display_info_list.begin(), new_display_info_list.end(),
+@@ -655,12 +661,13 @@ void DisplayManager::OnNativeDisplaysChanged(
+     if (layout.mirrored)
+       SetMultiDisplayMode(MIRRORING);
+   }
+-#endif
++//#endif
+ 
+   UpdateDisplaysWith(new_display_info_list);
+ }
+ 
+ void DisplayManager::UpdateDisplays() {
++  printf("DisplayManager:::%s\n", __func__);
+   DisplayInfoList display_info_list;
+   for (const auto& display : active_display_list_)
+     display_info_list.push_back(GetDisplayInfo(display.id()));
+-- 
+2.7.4
+

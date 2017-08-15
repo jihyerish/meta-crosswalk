@@ -1,0 +1,25 @@
+From b4a2a5480684b7a8cdce5f792e688f2db641a64f Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Fri, 21 Jul 2017 22:50:21 -0700
+Subject: [PATCH 16/26] Intel GPU specific optimization in GLES
+
+---
+ gpu/command_buffer/service/gles2_cmd_decoder.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder.cc b/gpu/command_buffer/service/gles2_cmd_decoder.cc
+index 3d916f8..f16a7d4 100644
+--- a/gpu/command_buffer/service/gles2_cmd_decoder.cc
++++ b/gpu/command_buffer/service/gles2_cmd_decoder.cc
+@@ -17197,7 +17197,7 @@ void GLES2DecoderImpl::DoCopySubTextureCHROMIUM(
+       dest_binding_target, dest_level, dest_internal_format,
+       unpack_flip_y == GL_TRUE, unpack_premultiply_alpha == GL_TRUE,
+       unpack_unmultiply_alpha == GL_TRUE);
+-#if defined(OS_CHROMEOS) && defined(ARCH_CPU_X86_FAMILY)
++#if defined(ARCH_CPU_X86_FAMILY)
+   // glDrawArrays is faster than glCopyTexSubImage2D on IA Mesa driver,
+   // although opposite in Android.
+   // TODO(dshwang): After Mesa fixes this issue, remove this hack.
+-- 
+2.7.4
+

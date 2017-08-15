@@ -1,0 +1,44 @@
+From 1d2e73e02dac16b7ef0dd11858e52db7414fa08c Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Wed, 7 Jun 2017 15:08:31 -0700
+Subject: [PATCH 02/26] Fix build breaks in HarfBuzz
+
+---
+ .../WebKit/Source/platform/fonts/shaping/HarfBuzzFace.cpp        | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/third_party/WebKit/Source/platform/fonts/shaping/HarfBuzzFace.cpp b/third_party/WebKit/Source/platform/fonts/shaping/HarfBuzzFace.cpp
+index faf1f1e..88c6ace0 100644
+--- a/third_party/WebKit/Source/platform/fonts/shaping/HarfBuzzFace.cpp
++++ b/third_party/WebKit/Source/platform/fonts/shaping/HarfBuzzFace.cpp
+@@ -57,6 +57,11 @@
+ 
+ namespace blink {
+ 
++typedef struct hb_variation_t {
++  hb_tag_t tag;
++  float    value;
++} hb_variation_t;
++
+ struct HbFontDeleter {
+   void operator()(hb_font_t* font) {
+     if (font)
+@@ -420,12 +425,14 @@ hb_font_t* HarfBuzzFace::GetScaledFont(
+   if (axis_count > 0) {
+     Vector<SkFontArguments::VariationPosition::Coordinate> axis_values;
+     axis_values.resize(axis_count);
+-    if (typeface->getVariationDesignPosition(axis_values.data(),
++
++  /*  if (typeface->getVariationDesignPosition(axis_values.data(),
+                                              axis_values.size()) > 0) {
+       hb_font_set_variations(
+           unscaled_font_, reinterpret_cast<hb_variation_t*>(axis_values.data()),
+           axis_values.size());
+     }
++*/
+   }
+ 
+   return unscaled_font_;
+-- 
+2.7.4
+

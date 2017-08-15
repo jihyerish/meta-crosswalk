@@ -1,0 +1,47 @@
+From df9bcb4c51f4750c8ace8741ee51e83985a57c16 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Thu, 6 Jul 2017 17:25:08 -0700
+Subject: [PATCH 09/26] try to run a browser
+
+---
+ mash/session/BUILD.gn   | 1 +
+ mash/session/session.cc | 4 ++++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/mash/session/BUILD.gn b/mash/session/BUILD.gn
+index 83ebd1e4..5aa3ecf 100644
+--- a/mash/session/BUILD.gn
++++ b/mash/session/BUILD.gn
+@@ -16,6 +16,7 @@ source_set("lib") {
+ 
+   deps = [
+     "//base",
++    "//content/public/common:service_names",
+     "//mash/common",
+     "//mash/quick_launch/public/interfaces:constants",
+     "//mojo/common",
+diff --git a/mash/session/session.cc b/mash/session/session.cc
+index 088cd5f..3d3a8fa 100644
+--- a/mash/session/session.cc
++++ b/mash/session/session.cc
+@@ -7,6 +7,7 @@
+ #include "base/bind.h"
+ #include "base/command_line.h"
+ #include "base/message_loop/message_loop.h"
++#include "content/public/common/service_names.mojom.h"
+ #include "mash/common/config.h"
+ #include "mash/quick_launch/public/interfaces/constants.mojom.h"
+ #include "services/service_manager/public/cpp/connector.h"
+@@ -21,6 +22,9 @@ Session::~Session() {}
+ void Session::OnStart() {
+   StartWindowManager();
+   StartQuickLaunch();
++  printf("Start a brwoser\n");
++  context()->connector()->StartService(
++      service_manager::Identity(content::mojom::kPackagedServicesServiceName));
+ }
+ 
+ void Session::StartWindowManager() {
+-- 
+2.7.4
+

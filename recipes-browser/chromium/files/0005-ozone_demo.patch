@@ -1,0 +1,56 @@
+From f37d96ce14c6a1879d30927de0b7fc06caefa9f5 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Fri, 16 Jun 2017 23:46:58 -0700
+Subject: [PATCH 05/26] ozone_demo
+
+---
+ ui/ozone/demo/ozone_demo.cc | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/ui/ozone/demo/ozone_demo.cc b/ui/ozone/demo/ozone_demo.cc
+index 33bebf5..8aba5b9 100644
+--- a/ui/ozone/demo/ozone_demo.cc
++++ b/ui/ozone/demo/ozone_demo.cc
+@@ -200,6 +200,11 @@ RendererFactory::~RendererFactory() {
+ 
+ bool RendererFactory::Initialize() {
+   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
++
++  ui::OzonePlatform::InitParams params;
++  params.single_process = true;
++  ui::OzonePlatform::InitializeForGPU(params);
++
+   if (!command_line->HasSwitch(kDisableGpu) && gl::init::InitializeGLOneOff() &&
+       gpu_helper_.Initialize(base::ThreadTaskRunnerHandle::Get(),
+                              base::ThreadTaskRunnerHandle::Get())) {
+@@ -280,8 +285,9 @@ void WindowManager::OnConfigurationChanged() {
+ 
+   is_configuring_ = true;
+   delegate_->GrabServer();
++
+   delegate_->GetDisplays(
+-      base::Bind(&WindowManager::OnDisplaysAquired, base::Unretained(this)));
++     base::Bind(&WindowManager::OnDisplaysAquired, base::Unretained(this)));
+ }
+ 
+ void WindowManager::OnDisplaySnapshotsInvalidated() {}
+@@ -297,7 +303,6 @@ void WindowManager::OnDisplaysAquired(
+                  << " doesn't have a native mode";
+       continue;
+     }
+-
+     delegate_->Configure(
+         *display, display->native_mode(), origin,
+         base::Bind(&WindowManager::OnDisplayConfigured, base::Unretained(this),
+@@ -316,7 +321,7 @@ void WindowManager::OnDisplaysAquired(
+ }
+ 
+ void WindowManager::OnDisplayConfigured(const gfx::Rect& bounds, bool success) {
+-  if (success) {
++	if (success) {
+     std::unique_ptr<DemoWindow> window(
+         new DemoWindow(this, &renderer_factory_, bounds));
+     window->Start();
+-- 
+2.7.4
+

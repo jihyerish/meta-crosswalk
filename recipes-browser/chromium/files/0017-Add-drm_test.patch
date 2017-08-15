@@ -1,0 +1,2661 @@
+From 7b9799a716062c03fd92ff5ba163752ce093649e Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Thu, 20 Jul 2017 13:23:48 -0700
+Subject: [PATCH 17/26] Add drm_test
+
+---
+ ui/ozone/demo/BUILD.gn              |  46 ++++
+ ui/ozone/demo/bs_drm.h              | 221 +++++++++++++++++++
+ ui/ozone/demo/debug.c               |  28 +++
+ ui/ozone/demo/draw.c                | 340 ++++++++++++++++++++++++++++
+ ui/ozone/demo/drm_connectors.c      |  47 ++++
+ ui/ozone/demo/drm_fb.c              | 137 ++++++++++++
+ ui/ozone/demo/drm_open.c            | 125 +++++++++++
+ ui/ozone/demo/drm_pipe.c            | 297 +++++++++++++++++++++++++
+ ui/ozone/demo/egl.c                 | 415 +++++++++++++++++++++++++++++++++++
+ ui/ozone/demo/gl.c                  |  95 ++++++++
+ ui/ozone/demo/mapped_texture_test.c | 427 ++++++++++++++++++++++++++++++++++++
+ ui/ozone/demo/mmap.c                | 232 ++++++++++++++++++++
+ ui/ozone/demo/open.c                |  86 ++++++++
+ ui/ozone/demo/pipe.c                |  34 +++
+ 14 files changed, 2530 insertions(+)
+ create mode 100644 ui/ozone/demo/bs_drm.h
+ create mode 100644 ui/ozone/demo/debug.c
+ create mode 100644 ui/ozone/demo/draw.c
+ create mode 100644 ui/ozone/demo/drm_connectors.c
+ create mode 100644 ui/ozone/demo/drm_fb.c
+ create mode 100644 ui/ozone/demo/drm_open.c
+ create mode 100644 ui/ozone/demo/drm_pipe.c
+ create mode 100644 ui/ozone/demo/egl.c
+ create mode 100644 ui/ozone/demo/gl.c
+ create mode 100644 ui/ozone/demo/mapped_texture_test.c
+ create mode 100644 ui/ozone/demo/mmap.c
+ create mode 100644 ui/ozone/demo/open.c
+ create mode 100644 ui/ozone/demo/pipe.c
+
+diff --git a/ui/ozone/demo/BUILD.gn b/ui/ozone/demo/BUILD.gn
+index b284dc9..98e5a53 100644
+--- a/ui/ozone/demo/BUILD.gn
++++ b/ui/ozone/demo/BUILD.gn
+@@ -5,6 +5,7 @@
+ group("demo") {
+   deps = [
+     ":ozone_demo",
++    ":zero_copy_test",
+   ]
+ }
+ 
+@@ -37,3 +38,48 @@ executable("ozone_demo") {
+     "//ui/platform_window",
+   ]
+ }
++
++executable("zero_copy_test") {
++   sources = [
++      "open.c",
++      "debug.c",
++      "drm_fb.c",
++      "gl.c",
++      "mmap.c",
++      "egl.c",
++      "pipe.c",
++      "draw.c",
++      "drm_pipe.c",
++      "drm_open.c",
++      "drm_connectors.c",
++      "mapped_texture_test.c",
++   ]
++
++   deps = [
++  #  "//base",
++  #  "//skia",
++  #   "//ui/gl",
++  #   "//ui/gl/init",
++  #   "//ui/ozone",
++     "//third_party/minigbm",
++     "//third_party/libdrm",
++     "//third_party/mesa",
++  #   "//gpu",
++  #   "//ui/platform_window",
++  #   "//ui/gfx",
++  #   "//ui/gfx/geometry",
++  #   "//base",
++   ]
++
++   libs = [
++    "GLESv2",
++    "EGL",
++  #  "GL",
++   ]
++
++  # include_dirs = [ "//third_party/khronos" ]
++   #public_configs = [ "//third_party/khronos:khronos_headers" ]
++#   data_deps = [
++ #   "//third_party/mesa:osmesa",
++  #]
++}
+diff --git a/ui/ozone/demo/bs_drm.h b/ui/ozone/demo/bs_drm.h
+new file mode 100644
+index 0000000..e77cadf
+--- /dev/null
++++ b/ui/ozone/demo/bs_drm.h
+@@ -0,0 +1,221 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#ifndef __BS_DRM_H__
++#define __BS_DRM_H__
++
++#define _GNU_SOURCE
++#include <assert.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <stdarg.h>
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/mman.h>
++#include <sys/types.h>
++#include <time.h>
++#include <unistd.h>
++
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++#include <GLES2/gl2.h>
++#include <GLES2/gl2ext.h>
++#include <drm_fourcc.h>
++#include <gbm.h>
++#include <xf86drm.h>
++#include <xf86drmMode.h>
++
++#define bs_rank_skip UINT32_MAX
++
++#define BS_ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
++
++#define BS_ALIGN(a, alignment) ((a + (alignment - 1)) & ~(alignment - 1))
++
++// debug.c
++__attribute__((format(printf, 5, 6))) void bs_debug_print(const char *prefix, const char *func,
++							  const char *file, int line,
++							  const char *format, ...);
++#define bs_debug_error(...)                                                         \
++	do {                                                                        \
++		bs_debug_print("ERROR", __func__, __FILE__, __LINE__, __VA_ARGS__); \
++	} while (0)
++
++int64_t bs_debug_gettime_ns();
++
++// pipe.c
++typedef bool (*bs_make_pipe_piece)(void *context, void *out);
++
++bool bs_pipe_make(void *context, bs_make_pipe_piece *pieces, size_t piece_count, void *out_pipe,
++		  size_t pipe_size);
++
++// open.c
++
++// A return value of true causes enumeration to end immediately. fd is always
++// closed after the callback.
++typedef bool (*bs_open_enumerate_func)(void *user, int fd);
++
++// A return value of true causes the filter to return the given fd.
++typedef bool (*bs_open_filter_func)(int fd);
++
++// The fd with the lowest (magnitude) rank is returned. A fd with rank UINT32_MAX is skipped. A fd
++// with rank 0 ends the enumeration early and is returned. On a tie, the fd returned will be
++// arbitrarily chosen from the set of lowest rank fds.
++typedef uint32_t (*bs_open_rank_func)(int fd);
++
++void bs_open_enumerate(const char *format, unsigned start, unsigned end,
++		       bs_open_enumerate_func body, void *user);
++int bs_open_filtered(const char *format, unsigned start, unsigned end, bs_open_filter_func filter);
++int bs_open_ranked(const char *format, unsigned start, unsigned end, bs_open_rank_func rank);
++
++// drm_connectors.c
++#define bs_drm_connectors_any UINT32_MAX
++
++// Interleaved arrays in the layout { DRM_MODE_CONNECTOR_*, rank, DRM_MODE_CONNECTOR_*, rank, ... },
++// terminated by { ... 0, 0 }. bs_drm_connectors_any can be used in place of DRM_MODE_CONNECTOR_* to
++// match any connector. bs_rank_skip can be used in place of a rank to indicate that that connector
++// should be skipped.
++
++// Use internal connectors and fallback to any connector
++extern const uint32_t bs_drm_connectors_main_rank[];
++// Use only internal connectors
++extern const uint32_t bs_drm_connectors_internal_rank[];
++// Use only external connectors
++extern const uint32_t bs_drm_connectors_external_rank[];
++
++uint32_t bs_drm_connectors_rank(const uint32_t *ranks, uint32_t connector_type);
++
++// drm_pipe.c
++struct bs_drm_pipe {
++	int fd;  // Always owned by the user of this library
++	uint32_t connector_id;
++	uint32_t encoder_id;
++	uint32_t crtc_id;
++};
++struct bs_drm_pipe_plumber;
++
++// A class that makes pipes with certain constraints.
++struct bs_drm_pipe_plumber *bs_drm_pipe_plumber_new();
++void bs_drm_pipe_plumber_destroy(struct bs_drm_pipe_plumber **);
++// Takes ranks in the rank array format from drm_connectors.c. Lifetime of connector_ranks must
++// exceed the plumber
++void bs_drm_pipe_plumber_connector_ranks(struct bs_drm_pipe_plumber *,
++					 const uint32_t *connector_ranks);
++// crtc_mask is in the same format as drmModeEncoder.possible_crtcs
++void bs_drm_pipe_plumber_crtc_mask(struct bs_drm_pipe_plumber *, uint32_t crtc_mask);
++// Sets which card fd the plumber should use. The fd remains owned by the caller. If left unset,
++// bs_drm_pipe_plumber_make will try all available cards.
++void bs_drm_pipe_plumber_fd(struct bs_drm_pipe_plumber *, int card_fd);
++// Sets a pointer to store the chosen connector in after a succesful call to
++// bs_drm_pipe_plumber_make. It's optional, but calling drmModeGetConnector yourself can be slow.
++void bs_drm_pipe_plumber_connector_ptr(struct bs_drm_pipe_plumber *, drmModeConnector **ptr);
++// Makes the pipe based on the constraints of the plumber. Returns false if no pipe worked.
++bool bs_drm_pipe_plumber_make(struct bs_drm_pipe_plumber *, struct bs_drm_pipe *pipe);
++
++// Makes any pipe that will work for the given card fd. Returns false if no pipe worked.
++bool bs_drm_pipe_make(int fd, struct bs_drm_pipe *pipe);
++
++// drm_fb.c
++struct bs_drm_fb_builder;
++
++// A builder class used to collect drm framebuffer parameters and then build it.
++struct bs_drm_fb_builder *bs_drm_fb_builder_new();
++void bs_drm_fb_builder_destroy(struct bs_drm_fb_builder **);
++// Copies all available framebuffer parameters from the given buffer object.
++void bs_drm_fb_builder_gbm_bo(struct bs_drm_fb_builder *, struct gbm_bo *bo);
++// Sets the drm format parameter of the resulting framebuffer.
++void bs_drm_fb_builder_format(struct bs_drm_fb_builder *, uint32_t format);
++// Creates the framebuffer ID from the previously set parameters and returns it or 0 if there was a
++// failure.
++uint32_t bs_drm_fb_builder_create_fb(struct bs_drm_fb_builder *);
++
++// Creates a drm framebuffer from the given buffer object and returns the framebuffer's ID on
++// success or 0 on failure.
++uint32_t bs_drm_fb_create_gbm(struct gbm_bo *bo);
++
++// drm_open.c
++// Opens an arbitrary display's card.
++int bs_drm_open_for_display();
++// Opens the main display's card. This falls back to bs_drm_open_for_display().
++int bs_drm_open_main_display();
++int bs_drm_open_vgem();
++
++// egl.c
++struct bs_egl;
++struct bs_egl_fb;
++
++struct bs_egl *bs_egl_new();
++void bs_egl_destroy(struct bs_egl **egl);
++bool bs_egl_setup(struct bs_egl *self);
++bool bs_egl_make_current(struct bs_egl *self);
++
++EGLImageKHR bs_egl_image_create_gbm(struct bs_egl *self, struct gbm_bo *bo);
++void bs_egl_image_destroy(struct bs_egl *self, EGLImageKHR *image);
++bool bs_egl_image_flush_external(struct bs_egl *self, EGLImageKHR image);
++
++EGLSyncKHR bs_egl_create_sync(struct bs_egl *self, EGLenum type, const EGLint *attrib_list);
++EGLint bs_egl_wait_sync(struct bs_egl *self, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout);
++EGLBoolean bs_egl_destroy_sync(struct bs_egl *self, EGLSyncKHR sync);
++
++struct bs_egl_fb *bs_egl_fb_new(struct bs_egl *self, EGLImageKHR image);
++bool bs_egl_target_texture2D(struct bs_egl *self, EGLImageKHR image);
++bool bs_egl_has_extension(const char *extension, const char *extensions);
++void bs_egl_fb_destroy(struct bs_egl_fb **fb);
++GLuint bs_egl_fb_name(struct bs_egl_fb *self);
++
++// gl.c
++// The entry after the last valid binding should have name == NULL. The binding array is terminated
++// by a NULL name.
++struct bs_gl_program_create_binding {
++	// These parameters are passed to glBindAttribLocation
++	GLuint index;
++	const GLchar *name;
++};
++
++GLuint bs_gl_shader_create(GLenum type, const GLchar *src);
++// bindings can be NULL.
++GLuint bs_gl_program_create_vert_frag_bind(const GLchar *vert_src, const GLchar *frag_src,
++					   struct bs_gl_program_create_binding *bindings);
++
++// app.c
++struct bs_app;
++
++struct bs_app *bs_app_new();
++void bs_app_destroy(struct bs_app **app);
++int bs_app_fd(struct bs_app *self);
++size_t bs_app_fb_count(struct bs_app *self);
++void bs_app_set_fb_count(struct bs_app *self, size_t fb_count);
++struct gbm_bo *bs_app_fb_bo(struct bs_app *self, size_t index);
++uint32_t bs_app_fb_id(struct bs_app *self, size_t index);
++bool bs_app_setup(struct bs_app *self);
++int bs_app_display_fb(struct bs_app *self, size_t index);
++
++// mmap.c
++struct bs_mapper;
++struct bs_mapper *bs_mapper_dma_buf_new();
++struct bs_mapper *bs_mapper_gem_new();
++struct bs_mapper *bs_mapper_dumb_new(int device_fd);
++void bs_mapper_destroy(struct bs_mapper *mapper);
++void *bs_mapper_map(struct bs_mapper *mapper, struct gbm_bo *bo, size_t plane, void **map_data);
++void bs_mapper_unmap(struct bs_mapper *mapper, struct gbm_bo *bo, void *map_data);
++
++// draw.c
++
++struct bs_draw_format;
++
++bool bs_draw_stripe(struct bs_mapper *mapper, struct gbm_bo *bo,
++		    const struct bs_draw_format *format);
++bool bs_draw_ellipse(struct bs_mapper *mapper, struct gbm_bo *bo,
++		     const struct bs_draw_format *format, float progress);
++const struct bs_draw_format *bs_get_draw_format(uint32_t pixel_format);
++const struct bs_draw_format *bs_get_draw_format_from_name(const char *str);
++uint32_t bs_get_pixel_format(const struct bs_draw_format *format);
++const char *bs_get_format_name(const struct bs_draw_format *format);
++bool bs_parse_draw_format(const char *str, const struct bs_draw_format **format);
++
++#endif
+diff --git a/ui/ozone/demo/debug.c b/ui/ozone/demo/debug.c
+new file mode 100644
+index 0000000..4a2cd2d
+--- /dev/null
++++ b/ui/ozone/demo/debug.c
+@@ -0,0 +1,28 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++void bs_debug_print(const char *prefix, const char *func, const char *file, int line,
++		    const char *format, ...)
++{
++	va_list args;
++	va_start(args, format);
++	fprintf(stderr, "%s:%s():%s:%d:", prefix, func, basename(file), line);
++	vfprintf(stderr, format, args);
++	fprintf(stderr, "\n");
++	va_end(args);
++}
++
++int64_t bs_debug_gettime_ns()
++{
++	struct timespec t;
++	int ret = clock_gettime(CLOCK_MONOTONIC, &t);
++	if (ret)
++		return -1;
++	const int64_t billion = 1000000000;
++	return (int64_t)t.tv_nsec + (int64_t)t.tv_sec * billion;
++}
+diff --git a/ui/ozone/demo/draw.c b/ui/ozone/demo/draw.c
+new file mode 100644
+index 0000000..f0d8201
+--- /dev/null
++++ b/ui/ozone/demo/draw.c
+@@ -0,0 +1,340 @@
++/*
++ * Copyright 2017 The Chromium OS Authors. All rights reserved.
++
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++struct draw_format_component {
++	float rgb_coeffs[3];
++	float value_offset;
++	uint32_t horizontal_subsample_rate;
++	uint32_t vertical_subsample_rate;
++	uint32_t byte_skip;
++	uint32_t plane_index;
++	uint32_t plane_offset;
++};
++
++#define MAX_COMPONENTS 4
++struct bs_draw_format {
++	uint32_t pixel_format;
++	const char *name;
++	size_t component_count;
++	struct draw_format_component components[MAX_COMPONENTS];
++};
++
++struct draw_data {
++	uint32_t x;
++	uint32_t y;
++	uint32_t w;
++	uint32_t h;
++	float progress;
++	uint8_t out_color[MAX_COMPONENTS];
++};
++
++typedef void (*compute_color_t)(struct draw_data *data);
++
++#define PIXEL_FORMAT_AND_NAME(x) GBM_FORMAT_##x, #x
++static const struct bs_draw_format bs_draw_formats[] = {
++	{
++	    PIXEL_FORMAT_AND_NAME(NV12),
++	    3,
++	    {
++		{ { 0.2567890625f, 0.50412890625f, 0.09790625f }, 16.0f, 1, 1, 1, 0, 0 },
++		{ { -0.14822265625f, -0.2909921875f, 0.43921484375f }, 128.0f, 2, 2, 2, 1, 0 },
++		{ { 0.43921484375f, -0.3677890625f, -0.07142578125f }, 128.0f, 2, 2, 2, 1, 1 },
++	    },
++	},
++	{
++	    PIXEL_FORMAT_AND_NAME(NV21),
++	    3,
++	    {
++		{ { 0.2567890625f, 0.50412890625f, 0.09790625f }, 16.0f, 1, 1, 1, 0, 0 },
++		{ { 0.43921484375f, -0.3677890625f, -0.07142578125f }, 128.0f, 2, 2, 2, 1, 0 },
++		{ { -0.14822265625f, -0.2909921875f, 0.43921484375f }, 128.0f, 2, 2, 2, 1, 1 },
++	    },
++	},
++	{
++	    PIXEL_FORMAT_AND_NAME(YVU420),
++	    3,
++	    {
++		{ { 0.2567890625f, 0.50412890625f, 0.09790625f }, 16.0f, 1, 1, 1, 0, 0 },
++		{ { 0.43921484375f, -0.3677890625f, -0.07142578125f }, 128.0f, 2, 2, 1, 1, 0 },
++		{ { -0.14822265625f, -0.2909921875f, 0.43921484375f }, 128.0f, 2, 2, 1, 2, 0 },
++	    },
++	},
++	{
++	    PIXEL_FORMAT_AND_NAME(XRGB8888),
++	    3,
++	    {
++		{ { 0.0f, 0.0f, 1.0f }, 0.0f, 1, 1, 4, 0, 0 },
++		{ { 0.0f, 1.0f, 0.0f }, 0.0f, 1, 1, 4, 0, 1 },
++		{ { 1.0f, 0.0f, 0.0f }, 0.0f, 1, 1, 4, 0, 2 },
++	    },
++	},
++	{
++	    PIXEL_FORMAT_AND_NAME(ARGB8888),
++	    4,
++	    {
++		{ { 0.0f, 0.0f, 1.0f }, 0.0f, 1, 1, 4, 0, 0 },
++		{ { 0.0f, 1.0f, 0.0f }, 0.0f, 1, 1, 4, 0, 1 },
++		{ { 1.0f, 0.0f, 0.0f }, 0.0f, 1, 1, 4, 0, 2 },
++		{ { 0.0f, 0.0f, 0.0f }, 255.0f, 1, 1, 4, 0, 3 },
++	    },
++	},
++	{
++	    PIXEL_FORMAT_AND_NAME(YUYV),
++	    3,
++	    {
++		{ { 0.2567890625f, 0.50412890625f, 0.09790625f }, 16.0f, 1, 1, 2, 0, 0 },
++		{ { -0.14822265625f, -0.2909921875f, 0.43921484375f }, 128.0f, 2, 1, 4, 0, 1 },
++		{ { 0.43921484375f, -0.3677890625f, -0.07142578125f }, 128.0f, 2, 1, 4, 0, 3 },
++	    },
++	},
++	{
++	    PIXEL_FORMAT_AND_NAME(UYVY),
++	    3,
++	    {
++		{ { -0.14822265625f, -0.2909921875f, 0.43921484375f }, 128.0f, 2, 1, 4, 0, 0 },
++		{ { 0.2567890625f, 0.50412890625f, 0.09790625f }, 16.0f, 1, 1, 2, 0, 1 },
++		{ { 0.43921484375f, -0.3677890625f, -0.07142578125f }, 128.0f, 2, 1, 4, 0, 2 },
++	    },
++	},
++};
++
++struct draw_plane {
++	uint32_t row_stride;
++	uint8_t *ptr;
++	void *map_data;
++};
++
++static uint8_t clampbyte(float f)
++{
++	if (f >= 255.0f)
++		return 255;
++	if (f <= 0.0f)
++		return 0;
++	return (uint8_t)f;
++}
++
++uint8_t static convert_color(const struct draw_format_component *comp, uint8_t r, uint8_t g,
++			     uint8_t b)
++{
++	return clampbyte(comp->value_offset + r * comp->rgb_coeffs[0] + g * comp->rgb_coeffs[1] +
++			 b * comp->rgb_coeffs[2]);
++}
++
++static void unmmap_planes(struct bs_mapper *mapper, struct gbm_bo *bo, size_t num_planes,
++			  struct draw_plane *planes)
++{
++	for (uint32_t plane_index = 0; plane_index < num_planes; plane_index++)
++		bs_mapper_unmap(mapper, bo, planes[plane_index].map_data);
++}
++
++static size_t mmap_planes(struct bs_mapper *mapper, struct gbm_bo *bo,
++			  struct draw_plane planes[GBM_MAX_PLANES])
++{
++	size_t num_planes = gbm_bo_get_num_planes(bo);
++	for (size_t plane_index = 0; plane_index < num_planes; plane_index++) {
++		struct draw_plane *plane = &planes[plane_index];
++		plane->row_stride = gbm_bo_get_plane_stride(bo, plane_index);
++		plane->ptr = bs_mapper_map(mapper, bo, plane_index, &plane->map_data);
++		if (plane->ptr == MAP_FAILED) {
++			bs_debug_error("failed to mmap plane %zu of buffer object", plane_index);
++			unmmap_planes(mapper, bo, plane_index, planes);
++			return 0;
++		}
++	}
++
++	return num_planes;
++}
++
++static bool draw_color(struct bs_mapper *mapper, struct gbm_bo *bo,
++		       const struct bs_draw_format *format, struct draw_data *data,
++		       compute_color_t compute_color_fn)
++{
++	uint8_t *ptr, *converted_colors[MAX_COMPONENTS];
++	struct draw_plane planes[GBM_MAX_PLANES];
++	uint32_t height = data->h = gbm_bo_get_height(bo);
++	uint32_t width = data->w = gbm_bo_get_width(bo);
++
++	size_t num_planes = mmap_planes(mapper, bo, planes);
++	if (num_planes == 0) {
++		bs_debug_error("failed to prepare to draw pattern to buffer object");
++		return false;
++	}
++
++	for (size_t comp_index = 0; comp_index < format->component_count; comp_index++) {
++		converted_colors[comp_index] = calloc(width * height, sizeof(uint8_t));
++		assert(converted_colors[comp_index]);
++	}
++
++	for (uint32_t y = 0; y < height; y++) {
++		data->y = y;
++		for (uint32_t x = 0; x < width; x++) {
++			data->x = x;
++			compute_color_fn(data);
++			for (size_t comp_index = 0; comp_index < format->component_count;
++			     comp_index++) {
++				const struct draw_format_component *comp =
++				    &format->components[comp_index];
++				ptr = converted_colors[comp_index] + width * y + x;
++				*ptr = convert_color(comp, data->out_color[2], data->out_color[1],
++						     data->out_color[0]);
++			}
++		}
++	}
++
++	uint32_t color, samples, offset;
++	uint8_t *rows[MAX_COMPONENTS] = { 0 };
++	for (size_t comp_index = 0; comp_index < format->component_count; comp_index++) {
++		const struct draw_format_component *comp = &format->components[comp_index];
++		struct draw_plane *plane = &planes[comp->plane_index];
++		for (uint32_t y = 0; y < height / comp->vertical_subsample_rate; y++) {
++			rows[comp_index] = plane->ptr + comp->plane_offset + plane->row_stride * y;
++			for (uint32_t x = 0; x < width / comp->horizontal_subsample_rate; x++) {
++				offset = color = samples = 0;
++				for (uint32_t j = 0; j < comp->vertical_subsample_rate; j++) {
++					offset = (y * comp->vertical_subsample_rate + j) * width +
++						 x * comp->horizontal_subsample_rate;
++					for (uint32_t i = 0; i < comp->horizontal_subsample_rate;
++					     i++) {
++						color += converted_colors[comp_index][offset];
++						samples++;
++						offset++;
++					}
++				}
++
++				*(rows[comp_index] + x * comp->byte_skip) = color / samples;
++			}
++		}
++	}
++
++	unmmap_planes(mapper, bo, num_planes, planes);
++	for (size_t comp_index = 0; comp_index < format->component_count; comp_index++) {
++		free(converted_colors[comp_index]);
++	}
++
++	return true;
++}
++
++static void compute_stripe(struct draw_data *data)
++{
++	const uint32_t striph = data->h / 4;
++	const uint32_t s = data->y / striph;
++	uint8_t r = 0, g = 0, b = 0;
++	switch (s) {
++		case 0:
++			r = g = b = 1;
++			break;
++		case 1:
++			r = 1;
++			break;
++		case 2:
++			g = 1;
++			break;
++		case 3:
++			b = 1;
++			break;
++		default:
++			r = g = b = 0;
++			break;
++	}
++
++	const float i = (float)data->x / (float)data->w * 256.0f;
++	data->out_color[0] = b * i;
++	data->out_color[1] = g * i;
++	data->out_color[2] = r * i;
++	data->out_color[3] = 0;
++}
++
++static void compute_ellipse(struct draw_data *data)
++{
++	float xratio = ((int)data->x - (int)data->w / 2) / ((float)(data->w / 2));
++	float yratio = ((int)data->y - (int)data->h / 2) / ((float)(data->h / 2));
++
++	// If a point is on or inside an ellipse, num <= 1.
++	float num = xratio * xratio + yratio * yratio;
++	uint32_t g = 255 * num;
++
++	if (g < 256) {
++		memset(data->out_color, 0, 4);
++		data->out_color[2] = 0xFF;
++		data->out_color[1] = g;
++	} else {
++		memset(data->out_color, (uint8_t)(data->progress * 255), 4);
++	}
++}
++
++bool bs_draw_stripe(struct bs_mapper *mapper, struct gbm_bo *bo,
++		    const struct bs_draw_format *format)
++{
++	struct draw_data data = { 0 };
++	return draw_color(mapper, bo, format, &data, compute_stripe);
++}
++
++bool bs_draw_ellipse(struct bs_mapper *mapper, struct gbm_bo *bo,
++		     const struct bs_draw_format *format, float progress)
++{
++	struct draw_data data = { 0 };
++	data.progress = progress;
++	return draw_color(mapper, bo, format, &data, compute_ellipse);
++}
++
++const struct bs_draw_format *bs_get_draw_format(uint32_t pixel_format)
++{
++	for (size_t format_index = 0; format_index < BS_ARRAY_LEN(bs_draw_formats);
++	     format_index++) {
++		const struct bs_draw_format *format = &bs_draw_formats[format_index];
++		if (format->pixel_format == pixel_format)
++			return format;
++	}
++
++	return NULL;
++}
++
++const struct bs_draw_format *bs_get_draw_format_from_name(const char *str)
++{
++	for (size_t format_index = 0; format_index < BS_ARRAY_LEN(bs_draw_formats);
++	     format_index++) {
++		const struct bs_draw_format *format = &bs_draw_formats[format_index];
++		if (!strcmp(str, format->name))
++			return format;
++	}
++
++	return NULL;
++}
++
++uint32_t bs_get_pixel_format(const struct bs_draw_format *format)
++{
++	assert(format);
++	return format->pixel_format;
++}
++
++const char *bs_get_format_name(const struct bs_draw_format *format)
++{
++	assert(format);
++	return format->name;
++}
++
++bool bs_parse_draw_format(const char *str, const struct bs_draw_format **format)
++{
++	if (strlen(str) == 4) {
++		const struct bs_draw_format *bs_draw_format = bs_get_draw_format(*(uint32_t *)str);
++		if (bs_draw_format) {
++			*format = bs_draw_format;
++			return true;
++		}
++	} else {
++		const struct bs_draw_format *bs_draw_format = bs_get_draw_format_from_name(str);
++		if (bs_draw_format) {
++			*format = bs_draw_format;
++			return true;
++		}
++	}
++
++	bs_debug_error("format %s is not recognized\n", str);
++	return false;
++}
+diff --git a/ui/ozone/demo/drm_connectors.c b/ui/ozone/demo/drm_connectors.c
+new file mode 100644
+index 0000000..cbf860a
+--- /dev/null
++++ b/ui/ozone/demo/drm_connectors.c
+@@ -0,0 +1,47 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++const uint32_t bs_drm_connectors_main_rank[] = { DRM_MODE_CONNECTOR_LVDS,
++						 0x01,
++						 DRM_MODE_CONNECTOR_eDP,
++						 0x02,
++						 DRM_MODE_CONNECTOR_DSI,
++						 0x03,
++						 bs_drm_connectors_any,
++						 0xFF,
++						 0,
++						 0 };
++
++const uint32_t bs_drm_connectors_internal_rank[] = { DRM_MODE_CONNECTOR_LVDS,
++						     0x01,
++						     DRM_MODE_CONNECTOR_eDP,
++						     0x02,
++						     DRM_MODE_CONNECTOR_DSI,
++						     0x03,
++						     0,
++						     0 };
++
++const uint32_t bs_drm_connectors_external_rank[] = { DRM_MODE_CONNECTOR_LVDS,
++						     bs_rank_skip,
++						     DRM_MODE_CONNECTOR_eDP,
++						     bs_rank_skip,
++						     DRM_MODE_CONNECTOR_DSI,
++						     bs_rank_skip,
++						     bs_drm_connectors_any,
++						     0x01,
++						     0,
++						     0 };
++
++uint32_t bs_drm_connectors_rank(const uint32_t *ranks, uint32_t connector_type)
++{
++	for (size_t rank_index = 0; ranks[rank_index] != 0; rank_index += 2)
++		if (ranks[rank_index] == bs_drm_connectors_any ||
++		    connector_type == ranks[rank_index])
++			return ranks[rank_index + 1];
++	return bs_rank_skip;
++}
+diff --git a/ui/ozone/demo/drm_fb.c b/ui/ozone/demo/drm_fb.c
+new file mode 100644
+index 0000000..93655ea
+--- /dev/null
++++ b/ui/ozone/demo/drm_fb.c
+@@ -0,0 +1,137 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++#define MAX_PLANE_COUNT 4
++
++struct bs_drm_fb_builder {
++	int fd;
++	uint32_t width;
++	uint32_t height;
++	uint32_t format;
++	size_t plane_count;
++	uint32_t handles[MAX_PLANE_COUNT];
++	uint32_t strides[MAX_PLANE_COUNT];
++	uint32_t offsets[MAX_PLANE_COUNT];
++};
++
++void bs_drm_fb_builder_init(struct bs_drm_fb_builder *self)
++{
++	assert(self);
++	self->fd = -1;
++}
++
++struct bs_drm_fb_builder *bs_drm_fb_builder_new()
++{
++	struct bs_drm_fb_builder *self = calloc(1, sizeof(struct bs_drm_fb_builder));
++	assert(self);
++	bs_drm_fb_builder_init(self);
++	return self;
++}
++
++void bs_drm_fb_builder_destroy(struct bs_drm_fb_builder **self)
++{
++	assert(self);
++	assert(*self);
++	free(*self);
++	*self = NULL;
++}
++
++void bs_drm_fb_builder_gbm_bo(struct bs_drm_fb_builder *self, struct gbm_bo *bo)
++{
++	assert(self);
++	assert(bo);
++
++	struct gbm_device *gbm = gbm_bo_get_device(bo);
++	assert(gbm);
++
++	self->fd = gbm_device_get_fd(gbm);
++	self->width = gbm_bo_get_width(bo);
++	self->height = gbm_bo_get_height(bo);
++	self->format = gbm_bo_get_format(bo);
++	self->plane_count = gbm_bo_get_num_planes(bo);
++	if (self->plane_count > MAX_PLANE_COUNT) {
++		bs_debug_print("WARNING", __func__, __FILE__, __LINE__,
++			       "only using first %d planes out of buffer object's %zu planes",
++			       MAX_PLANE_COUNT, self->plane_count);
++		self->plane_count = MAX_PLANE_COUNT;
++	}
++
++	for (size_t plane_index = 0; plane_index < self->plane_count; plane_index++) {
++		self->handles[plane_index] = gbm_bo_get_plane_handle(bo, plane_index).u32;
++		self->strides[plane_index] = gbm_bo_get_plane_stride(bo, plane_index);
++		self->offsets[plane_index] = gbm_bo_get_plane_offset(bo, plane_index);
++	}
++}
++
++void bs_drm_fb_builder_format(struct bs_drm_fb_builder *self, uint32_t format)
++{
++	assert(self);
++	self->format = format;
++}
++
++uint32_t bs_drm_fb_builder_create_fb(struct bs_drm_fb_builder *self)
++{
++	assert(self);
++
++	if (self->fd < 0) {
++		bs_debug_error("failed to create drm fb: card fd %d is invalid", self->fd);
++		return 0;
++	}
++
++	if (self->width <= 0 || self->height <= 0) {
++		bs_debug_error("failed to create drm fb: dimensions %ux%u are invalid", self->width,
++			       self->height);
++		return 0;
++	}
++
++	if (self->format == 0) {
++		bs_debug_error("failed to create drm fb: 0 format is invalid");
++		return 0;
++	}
++
++	if (self->plane_count == 0 || self->plane_count > MAX_PLANE_COUNT) {
++		bs_debug_error("failed to create drm fb: plane count %zu is invalid\n",
++			       self->plane_count);
++		return 0;
++	}
++
++	for (size_t plane_index = self->plane_count; plane_index < MAX_PLANE_COUNT; plane_index++) {
++		self->handles[plane_index] = 0;
++		self->strides[plane_index] = 0;
++		self->offsets[plane_index] = 0;
++	}
++
++	uint32_t fb_id;
++
++	int ret = drmModeAddFB2(self->fd, self->width, self->height, self->format, self->handles,
++				self->strides, self->offsets, &fb_id, 0);
++
++	if (ret) {
++		bs_debug_error("failed to create drm fb: drmModeAddFB2 returned %d", ret);
++		return 0;
++	}
++
++	return fb_id;
++}
++
++uint32_t bs_drm_fb_create_gbm(struct gbm_bo *bo)
++{
++	assert(bo);
++
++	struct bs_drm_fb_builder builder;
++	bs_drm_fb_builder_init(&builder);
++	bs_drm_fb_builder_gbm_bo(&builder, bo);
++	uint32_t fb_id = bs_drm_fb_builder_create_fb(&builder);
++
++	if (!fb_id) {
++		bs_debug_error("failed to create framebuffer from buffer object");
++		return 0;
++	}
++
++	return fb_id;
++}
+diff --git a/ui/ozone/demo/drm_open.c b/ui/ozone/demo/drm_open.c
+new file mode 100644
+index 0000000..9c00679
+--- /dev/null
++++ b/ui/ozone/demo/drm_open.c
+@@ -0,0 +1,125 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++static bool display_filter(int fd)
++{
++	bool has_connection = false;
++	drmModeRes *res = drmModeGetResources(fd);
++	if (!res)
++		return false;
++
++	if (res->count_crtcs == 0)
++		goto out;
++
++	for (int connector_index = 0; connector_index < res->count_connectors; connector_index++) {
++		drmModeConnector *connector =
++		    drmModeGetConnector(fd, res->connectors[connector_index]);
++		if (connector == NULL)
++			continue;
++
++		has_connection =
++		    connector->connection == DRM_MODE_CONNECTED && connector->count_modes > 0;
++		drmModeFreeConnector(connector);
++		if (has_connection)
++			break;
++	}
++
++out:
++	drmModeFreeResources(res);
++	return has_connection;
++}
++
++int bs_drm_open_for_display()
++{
++	return bs_open_filtered("/dev/dri/card%u", 0, DRM_MAX_MINOR, display_filter);
++}
++
++static bool connector_has_crtc(int fd, drmModeRes *res, drmModeConnector *connector)
++{
++	for (int encoder_index = 0; encoder_index < connector->count_encoders; encoder_index++) {
++		drmModeEncoder *encoder = drmModeGetEncoder(fd, connector->encoders[encoder_index]);
++		if (encoder == NULL)
++			continue;
++
++		uint32_t possible_crtcs = encoder->possible_crtcs;
++		drmModeFreeEncoder(encoder);
++
++		for (int crtc_index = 0; crtc_index < res->count_crtcs; crtc_index++)
++			if ((possible_crtcs & (1 << crtc_index)) != 0)
++				return true;
++	}
++
++	return false;
++}
++
++static uint32_t display_rank_connector_type(uint32_t connector_type)
++{
++	switch (connector_type) {
++		case DRM_MODE_CONNECTOR_LVDS:
++			return 0x01;
++		case DRM_MODE_CONNECTOR_eDP:
++			return 0x02;
++		case DRM_MODE_CONNECTOR_DSI:
++			return 0x03;
++	}
++	return 0xFF;
++}
++
++static uint32_t display_rank(int fd)
++{
++	drmModeRes *res = drmModeGetResources(fd);
++	if (!res)
++		return bs_rank_skip;
++
++	uint32_t best_rank = bs_rank_skip;
++	if (res->count_crtcs == 0)
++		goto out;
++
++	for (int connector_index = 0; connector_index < res->count_connectors; connector_index++) {
++		drmModeConnector *connector =
++		    drmModeGetConnector(fd, res->connectors[connector_index]);
++		if (connector == NULL)
++			continue;
++
++		bool has_connection = connector->connection == DRM_MODE_CONNECTED &&
++				      connector->count_modes > 0 &&
++				      connector_has_crtc(fd, res, connector);
++		drmModeFreeConnector(connector);
++		if (!has_connection)
++			continue;
++
++		uint32_t rank = display_rank_connector_type(connector->connector_type);
++		if (best_rank > rank)
++			best_rank = rank;
++	}
++
++out:
++	drmModeFreeResources(res);
++	return best_rank;
++}
++
++int bs_drm_open_main_display()
++{
++	return bs_open_ranked("/dev/dri/card%u", 0, DRM_MAX_MINOR, display_rank);
++}
++
++static bool vgem_filter(int fd)
++{
++	drmVersion *version = drmGetVersion(fd);
++	if (!version)
++		return false;
++
++	bool is_vgem = (strncmp("vgem", version->name, version->name_len) == 0);
++	drmFreeVersion(version);
++	return is_vgem;
++}
++
++int bs_drm_open_vgem()
++{
++	return bs_open_filtered("/dev/dri/card%u", 0, DRM_MAX_MINOR, vgem_filter);
++}
+diff --git a/ui/ozone/demo/drm_pipe.c b/ui/ozone/demo/drm_pipe.c
+new file mode 100644
+index 0000000..c349429
+--- /dev/null
++++ b/ui/ozone/demo/drm_pipe.c
+@@ -0,0 +1,297 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++struct bs_drm_pipe_plumber {
++	int fd;
++	const uint32_t *connector_ranks;
++	uint32_t crtc_mask;
++	drmModeConnector **connector_ptr;
++};
++
++struct fd_connector {
++	int fd;
++	drmModeRes *res;
++	drmModeConnector *connector;
++};
++
++struct pipe_internal {
++	struct fd_connector *connector;
++	size_t next_connector_index;
++	uint32_t connector_rank;
++	uint32_t encoder_id;
++	int next_encoder_index;
++	uint32_t crtc_id;
++	int next_crtc_index;
++};
++
++struct pipe_ctx {
++	size_t connector_count;
++	struct fd_connector *connectors;
++
++	uint32_t crtc_mask;
++	const uint32_t *connector_ranks;
++
++	uint32_t best_rank;
++	size_t first_connector_index;
++};
++
++static bool pipe_piece_connector(void *c, void *p)
++{
++	struct pipe_ctx *ctx = c;
++	struct pipe_internal *pipe = p;
++
++	bool use_connector = false;
++	size_t connector_index;
++	for (connector_index = pipe->next_connector_index == 0 ? ctx->first_connector_index
++							       : pipe->next_connector_index;
++	     connector_index < ctx->connector_count; connector_index++) {
++		struct fd_connector *fd_connector = &ctx->connectors[connector_index];
++		drmModeConnector *connector = fd_connector->connector;
++		if (connector == NULL)
++			continue;
++
++		use_connector =
++		    connector->connection == DRM_MODE_CONNECTED && connector->count_modes > 0;
++		if (use_connector && ctx->connector_ranks) {
++			uint32_t rank =
++			    bs_drm_connectors_rank(ctx->connector_ranks, connector->connector_type);
++			if (rank >= ctx->best_rank)
++				use_connector = false;
++			pipe->connector_rank = rank;
++		}
++
++		if (use_connector) {
++			pipe->connector = fd_connector;
++			break;
++		}
++	}
++
++	pipe->next_connector_index = connector_index + 1;
++	return use_connector;
++}
++
++static bool pipe_piece_encoder(void *c, void *p)
++{
++	(void)c;
++	struct pipe_internal *pipe = p;
++	int fd = pipe->connector->fd;
++
++	drmModeConnector *connector = pipe->connector->connector;
++	if (connector == NULL)
++		return false;
++
++	int encoder_index = 0;
++	for (encoder_index = pipe->next_encoder_index; encoder_index < connector->count_encoders;
++	     encoder_index++) {
++		drmModeEncoder *encoder = drmModeGetEncoder(fd, connector->encoders[encoder_index]);
++		if (encoder == NULL)
++			continue;
++
++		drmModeFreeEncoder(encoder);
++
++		pipe->encoder_id = connector->encoders[encoder_index];
++
++		break;
++	}
++
++	pipe->next_encoder_index = encoder_index + 1;
++	return encoder_index < connector->count_encoders;
++}
++
++static bool pipe_piece_crtc(void *c, void *p)
++{
++	struct pipe_ctx *ctx = c;
++	struct pipe_internal *pipe = p;
++	int fd = pipe->connector->fd;
++	drmModeRes *res = pipe->connector->res;
++
++	drmModeEncoder *encoder = drmModeGetEncoder(fd, pipe->encoder_id);
++	if (encoder == NULL)
++		return false;
++
++	uint32_t possible_crtcs = encoder->possible_crtcs & ctx->crtc_mask;
++	drmModeFreeEncoder(encoder);
++
++	bool use_crtc = false;
++	int crtc_index;
++	for (crtc_index = pipe->next_crtc_index; crtc_index < res->count_crtcs; crtc_index++) {
++		use_crtc = (possible_crtcs & (1 << crtc_index));
++		if (use_crtc) {
++			pipe->crtc_id = res->crtcs[crtc_index];
++			break;
++		}
++	}
++
++	pipe->next_crtc_index = crtc_index;
++	return use_crtc;
++}
++
++static void bs_drm_pipe_plumber_init(struct bs_drm_pipe_plumber *self)
++{
++	assert(self);
++	self->fd = -1;
++	self->crtc_mask = 0xffffffff;
++}
++
++struct bs_drm_pipe_plumber *bs_drm_pipe_plumber_new()
++{
++	struct bs_drm_pipe_plumber *self = calloc(1, sizeof(struct bs_drm_pipe_plumber));
++	assert(self);
++	bs_drm_pipe_plumber_init(self);
++	return self;
++}
++
++void bs_drm_pipe_plumber_destroy(struct bs_drm_pipe_plumber **self)
++{
++	assert(self);
++	assert(*self);
++	free(*self);
++	*self = NULL;
++}
++
++void bs_drm_pipe_plumber_connector_ranks(struct bs_drm_pipe_plumber *self,
++					 const uint32_t *connector_ranks)
++{
++	assert(self);
++	self->connector_ranks = connector_ranks;
++}
++
++void bs_drm_pipe_plumber_crtc_mask(struct bs_drm_pipe_plumber *self, uint32_t crtc_mask)
++{
++	assert(self);
++	self->crtc_mask = crtc_mask;
++}
++
++void bs_drm_pipe_plumber_fd(struct bs_drm_pipe_plumber *self, int card_fd)
++{
++	assert(self);
++	self->fd = card_fd;
++}
++
++void bs_drm_pipe_plumber_connector_ptr(struct bs_drm_pipe_plumber *self, drmModeConnector **ptr)
++{
++	assert(self);
++	self->connector_ptr = ptr;
++}
++
++bool bs_drm_pipe_plumber_make(struct bs_drm_pipe_plumber *self, struct bs_drm_pipe *pipe)
++{
++	assert(self);
++	assert(pipe);
++
++	size_t connector_count = 0;
++	size_t fd_count = 0;
++	int fds[DRM_MAX_MINOR];
++	drmModeRes *fd_res[DRM_MAX_MINOR];
++	if (self->fd >= 0) {
++		fds[0] = self->fd;
++		fd_res[0] = drmModeGetResources(fds[0]);
++		if (!fd_res[0])
++			return false;
++		connector_count += fd_res[0]->count_connectors;
++		fd_count++;
++	}
++	else {
++		for (int fd_index = 0; fd_index < DRM_MAX_MINOR; fd_index++) {
++			char *file_path = NULL;
++			int ret = asprintf(&file_path, "/dev/dri/card%d", fd_index);
++			assert(ret != -1);
++			assert(file_path);
++
++			int fd = open(file_path, O_RDWR);
++			free(file_path);
++			if (fd < 0)
++				continue;
++
++			drmModeRes *res = drmModeGetResources(fd);
++			if (!res) {
++				close(fd);
++				continue;
++			}
++			fds[fd_count] = fd;
++			fd_res[fd_count] = res;
++			connector_count += res->count_connectors;
++			fd_count++;
++		}
++	}
++
++	struct fd_connector *connectors = calloc(connector_count, sizeof(struct fd_connector));
++	assert(connectors);
++	size_t connector_index = 0;
++	for (size_t fd_index = 0; fd_index < fd_count; fd_index++) {
++		int fd = fds[fd_index];
++		drmModeRes *res = fd_res[fd_index];
++		for (int fd_conn_index = 0; fd_conn_index < res->count_connectors;
++		     fd_conn_index++) {
++			connectors[connector_index].fd = fd;
++			connectors[connector_index].res = res;
++			connectors[connector_index].connector =
++			    drmModeGetConnector(fd, res->connectors[fd_conn_index]);
++			connector_index++;
++		}
++	}
++
++	struct pipe_ctx ctx = { connector_count,       connectors,   self->crtc_mask,
++				self->connector_ranks, bs_rank_skip, 0 };
++	struct pipe_internal pipe_internal;
++	bs_make_pipe_piece pieces[] = { pipe_piece_connector, pipe_piece_encoder, pipe_piece_crtc };
++	bool success = false;
++	while (ctx.best_rank != 0) {
++		struct pipe_internal current_pipe_internal;
++		bool current_success =
++		    bs_pipe_make(&ctx, pieces, sizeof(pieces) / sizeof(pieces[0]),
++				 &current_pipe_internal, sizeof(struct pipe_internal));
++		if (!current_success)
++			break;
++
++		pipe_internal = current_pipe_internal;
++		success = true;
++		if (ctx.connector_ranks == NULL)
++			break;
++
++		ctx.best_rank = current_pipe_internal.connector_rank;
++		ctx.first_connector_index = current_pipe_internal.next_connector_index;
++	}
++
++	if (success) {
++		struct fd_connector *fd_connector = pipe_internal.connector;
++		pipe->fd = fd_connector->fd;
++		pipe->connector_id = fd_connector->connector->connector_id;
++		pipe->encoder_id = pipe_internal.encoder_id;
++		pipe->crtc_id = pipe_internal.crtc_id;
++		if (self->connector_ptr) {
++			*self->connector_ptr = fd_connector->connector;
++			fd_connector->connector = NULL;
++		}
++	}
++
++	for (size_t connector_index = 0; connector_index < connector_count; connector_index++)
++		drmModeFreeConnector(connectors[connector_index].connector);
++	free(connectors);
++
++	for (size_t fd_index = 0; fd_index < fd_count; fd_index++) {
++		int fd = fds[fd_index];
++		if (self->fd != fd && !(success && pipe->fd == fd))
++			close(fd);
++		drmModeFreeResources(fd_res[fd_index]);
++	}
++
++	return success;
++}
++
++bool bs_drm_pipe_make(int fd, struct bs_drm_pipe *pipe)
++{
++	assert(fd >= 0);
++	assert(pipe);
++
++	struct bs_drm_pipe_plumber plumber = { 0 };
++	bs_drm_pipe_plumber_init(&plumber);
++	bs_drm_pipe_plumber_fd(&plumber, fd);
++
++	return bs_drm_pipe_plumber_make(&plumber, pipe);
++}
+diff --git a/ui/ozone/demo/egl.c b/ui/ozone/demo/egl.c
+new file mode 100644
+index 0000000..d31891b
+--- /dev/null
++++ b/ui/ozone/demo/egl.c
+@@ -0,0 +1,415 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++static const char *get_egl_error();
++static const char *get_gl_framebuffer_error();
++
++#define PFNEGLIMAGEFLUSHEXTERNALEXTPROC PFNEGLDESTROYIMAGEKHRPROC
++
++struct bs_egl {
++	bool setup;
++	EGLDisplay display;
++	EGLContext ctx;
++	bool use_image_flush_external;
++	bool use_dma_buf_import_modifiers;
++
++	// Names are the original gl/egl function names with the prefix chopped off.
++	PFNEGLCREATEIMAGEKHRPROC CreateImageKHR;
++	PFNEGLDESTROYIMAGEKHRPROC DestroyImageKHR;
++	PFNEGLIMAGEFLUSHEXTERNALEXTPROC ImageFlushExternal;
++	PFNGLEGLIMAGETARGETTEXTURE2DOESPROC EGLImageTargetTexture2DOES;
++	PFNEGLCREATESYNCKHRPROC CreateSyncKHR;
++	PFNEGLCLIENTWAITSYNCKHRPROC ClientWaitSyncKHR;
++	PFNEGLDESTROYSYNCKHRPROC DestroySyncKHR;
++};
++
++struct bs_egl_fb {
++	GLuint tex;
++	GLuint fb;
++};
++
++struct bs_egl *bs_egl_new()
++{
++	struct bs_egl *self = calloc(1, sizeof(struct bs_egl));
++	assert(self);
++	self->display = EGL_NO_DISPLAY;
++	self->ctx = EGL_NO_CONTEXT;
++	return self;
++}
++
++void bs_egl_destroy(struct bs_egl **egl)
++{
++	assert(egl);
++	struct bs_egl *self = *egl;
++	assert(self);
++
++	if (self->ctx != EGL_NO_CONTEXT) {
++		assert(self->display != EGL_NO_DISPLAY);
++		eglMakeCurrent(self->display, NULL, NULL, NULL);
++		eglDestroyContext(self->display, self->ctx);
++	}
++
++	if (self->display != EGL_NO_DISPLAY)
++		eglTerminate(self->display);
++
++	free(self);
++	*egl = NULL;
++}
++
++bool bs_egl_setup(struct bs_egl *self)
++{
++	assert(self);
++	assert(!self->setup);
++
++	self->CreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
++	self->DestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
++	self->ImageFlushExternal =
++	    (PFNEGLIMAGEFLUSHEXTERNALEXTPROC)eglGetProcAddress("eglImageFlushExternalEXT");
++	self->EGLImageTargetTexture2DOES =
++	    (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
++	if (!self->CreateImageKHR || !self->DestroyImageKHR || !self->EGLImageTargetTexture2DOES) {
++		bs_debug_error(
++		    "eglGetProcAddress returned NULL for a required extension entry point.");
++		return false;
++	}
++
++	self->CreateSyncKHR = (PFNEGLCREATESYNCKHRPROC)eglGetProcAddress("eglCreateSyncKHR");
++	self->ClientWaitSyncKHR =
++	    (PFNEGLCLIENTWAITSYNCKHRPROC)eglGetProcAddress("eglClientWaitSyncKHR");
++	self->DestroySyncKHR = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
++
++	self->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++	if (self->display == EGL_NO_DISPLAY) {
++		bs_debug_error("failed to get egl display");
++		return false;
++	}
++
++	if (!eglInitialize(self->display, NULL /* ignore version */, NULL /* ignore version */)) {
++		bs_debug_error("failed to initialize egl: %s\n", get_egl_error());
++		return false;
++	}
++
++	// Get any EGLConfig. We need one to create a context, but it isn't used to create any
++	// surfaces.
++	const EGLint config_attribs[] = { EGL_SURFACE_TYPE, EGL_DONT_CARE, EGL_NONE };
++	EGLConfig egl_config;
++	EGLint num_configs;
++	if (!eglChooseConfig(self->display, config_attribs, &egl_config, 1,
++			     &num_configs /* unused but can't be null */)) {
++		bs_debug_error("eglChooseConfig() failed with error: %s", get_egl_error());
++		goto terminate_display;
++	}
++
++	if (!eglBindAPI(EGL_OPENGL_ES_API)) {
++		bs_debug_error("failed to bind OpenGL ES: %s", get_egl_error());
++		goto terminate_display;
++	}
++
++	const EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
++
++	self->ctx = eglCreateContext(self->display, egl_config,
++				     EGL_NO_CONTEXT /* no shared context */, context_attribs);
++	if (self->ctx == EGL_NO_CONTEXT) {
++		bs_debug_error("failed to create OpenGL ES Context: %s", get_egl_error());
++		goto terminate_display;
++	}
++
++	if (!eglMakeCurrent(self->display, EGL_NO_SURFACE /* no default draw surface */,
++			    EGL_NO_SURFACE /* no default draw read */, self->ctx)) {
++		bs_debug_error("failed to make the OpenGL ES Context current: %s", get_egl_error());
++		goto destroy_context;
++	}
++
++	const char *egl_extensions = eglQueryString(self->display, EGL_EXTENSIONS);
++	if (!bs_egl_has_extension("EGL_KHR_image_base", egl_extensions)) {
++		bs_debug_error("EGL_KHR_image_base extension not supported");
++		goto destroy_context;
++	}
++	if (!bs_egl_has_extension("EGL_EXT_image_dma_buf_import", egl_extensions)) {
++		bs_debug_error("EGL_EXT_image_dma_buf_import extension not supported");
++		goto destroy_context;
++	}
++
++	if (!bs_egl_has_extension("EGL_KHR_fence_sync", egl_extensions) &&
++	    !bs_egl_has_extension("EGL_KHR_wait_sync", egl_extensions)) {
++		bs_debug_error(
++		    "EGL_KHR_fence_sync and EGL_KHR_wait_sync extension not supported");
++		goto destroy_context;
++	}
++
++	if (bs_egl_has_extension("EGL_EXT_image_flush_external", egl_extensions)) {
++		if (!self->ImageFlushExternal) {
++			bs_debug_print("WARNING", __func__, __FILE__, __LINE__,
++				       "EGL_EXT_image_flush_external extension is supported, but "
++				       "eglGetProcAddress returned NULL.");
++		} else {
++			self->use_image_flush_external = true;
++		}
++	}
++	if (bs_egl_has_extension("EGL_EXT_image_dma_buf_import_modifiers", egl_extensions))
++		self->use_dma_buf_import_modifiers = true;
++
++	const char *gl_extensions = (const char *)glGetString(GL_EXTENSIONS);
++	if (!bs_egl_has_extension("GL_OES_EGL_image", gl_extensions)) {
++		bs_debug_error("GL_OES_EGL_image extension not supported");
++		goto destroy_context;
++	}
++
++	self->setup = true;
++
++	return true;
++
++destroy_context:
++	eglDestroyContext(self->display, self->ctx);
++terminate_display:
++	eglTerminate(self->display);
++	self->display = EGL_NO_DISPLAY;
++	return false;
++}
++
++bool bs_egl_make_current(struct bs_egl *self)
++{
++	assert(self);
++	assert(self->display != EGL_NO_DISPLAY);
++	assert(self->ctx != EGL_NO_CONTEXT);
++	return eglMakeCurrent(self->display, EGL_NO_SURFACE /* No default draw surface */,
++			      EGL_NO_SURFACE /* No default draw read */, self->ctx);
++}
++
++EGLImageKHR bs_egl_image_create_gbm(struct bs_egl *self, struct gbm_bo *bo)
++{
++	assert(self);
++	assert(self->CreateImageKHR);
++	assert(self->display != EGL_NO_DISPLAY);
++	assert(bo);
++
++	int fds[GBM_MAX_PLANES];
++	for (size_t plane = 0; plane < gbm_bo_get_num_planes(bo); plane++) {
++		fds[plane] = gbm_bo_get_plane_fd(bo, plane);
++		if (fds[plane] < 0) {
++			bs_debug_error("failed to get fb for bo: %d", fds[plane]);
++			return EGL_NO_IMAGE_KHR;
++		}
++	}
++
++	// When the bo has 3 planes with modifier support, it requires 37 components.
++	EGLint khr_image_attrs[37] = {
++		EGL_WIDTH,
++		gbm_bo_get_width(bo),
++		EGL_HEIGHT,
++		gbm_bo_get_height(bo),
++		EGL_LINUX_DRM_FOURCC_EXT,
++		(int)gbm_bo_get_format(bo),
++		EGL_NONE,
++	};
++
++	size_t attrs_index = 6;
++	for (size_t plane = 0; plane < gbm_bo_get_num_planes(bo); plane++) {
++		khr_image_attrs[attrs_index++] = EGL_DMA_BUF_PLANE0_FD_EXT + plane * 3;
++		khr_image_attrs[attrs_index++] = fds[plane];
++		khr_image_attrs[attrs_index++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT + plane * 3;
++		khr_image_attrs[attrs_index++] = gbm_bo_get_plane_offset(bo, plane);
++		khr_image_attrs[attrs_index++] = EGL_DMA_BUF_PLANE0_PITCH_EXT + plane * 3;
++		khr_image_attrs[attrs_index++] = gbm_bo_get_plane_stride(bo, plane);
++		if (self->use_dma_buf_import_modifiers) {
++	/*		const uint64_t modifier = gbm_bo_get_format_modifier(bo);
++			khr_image_attrs[attrs_index++] =
++			    EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT + plane * 2;
++			khr_image_attrs[attrs_index++] = modifier & 0xfffffffful;
++			khr_image_attrs[attrs_index++] =
++			    EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT + plane * 2;
++			khr_image_attrs[attrs_index++] = modifier >> 32;
++*/
++		}
++	}
++
++	khr_image_attrs[attrs_index++] = EGL_NONE;
++
++	EGLImageKHR image =
++	    self->CreateImageKHR(self->display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT,
++				 NULL /* no client buffer */, khr_image_attrs);
++
++	if (image == EGL_NO_IMAGE_KHR) {
++		bs_debug_error("failed to make image from target buffer: %s", get_egl_error());
++		return EGL_NO_IMAGE_KHR;
++	}
++
++	for (size_t plane = 0; plane < gbm_bo_get_num_planes(bo); plane++) {
++		close(fds[plane]);
++	}
++
++	return image;
++}
++
++void bs_egl_image_destroy(struct bs_egl *self, EGLImageKHR *image)
++{
++	assert(self);
++	assert(image);
++	assert(*image != EGL_NO_IMAGE_KHR);
++	assert(self->DestroyImageKHR);
++	self->DestroyImageKHR(self->display, *image);
++	*image = EGL_NO_IMAGE_KHR;
++}
++
++bool bs_egl_image_flush_external(struct bs_egl *self, EGLImageKHR image)
++{
++    printf("%s\n", __func__);
++	assert(self);
++	assert(image != EGL_NO_IMAGE_KHR);
++	if (!self->use_image_flush_external)
++		return true;
++	const EGLAttrib attrs[] = { EGL_NONE };
++    return true;
++	//return self->ImageFlushExternal(self->display, image, attrs);
++
++}
++
++struct bs_egl_fb *bs_egl_fb_new(struct bs_egl *self, EGLImageKHR image)
++{
++	assert(self);
++	assert(self->EGLImageTargetTexture2DOES);
++
++	struct bs_egl_fb *fb = calloc(1, sizeof(struct bs_egl_fb));
++	assert(fb);
++
++	glGenTextures(1, &fb->tex);
++	glBindTexture(GL_TEXTURE_2D, fb->tex);
++	self->EGLImageTargetTexture2DOES(GL_TEXTURE_2D, (GLeglImageOES)image);
++	glBindTexture(GL_TEXTURE_2D, 0);
++
++	glGenFramebuffers(1, &fb->fb);
++	glBindFramebuffer(GL_FRAMEBUFFER, fb->fb);
++	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb->tex, 0);
++
++	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
++		bs_debug_error("failed framebuffer check for created target buffer: %s",
++			       get_gl_framebuffer_error());
++		glDeleteFramebuffers(1, &fb->fb);
++		glDeleteTextures(1, &fb->tex);
++		free(fb);
++		return NULL;
++	}
++
++	return fb;
++}
++
++void bs_egl_fb_destroy(struct bs_egl_fb **fb)
++{
++	assert(fb);
++	struct bs_egl_fb *self = *fb;
++	assert(self);
++
++	glDeleteFramebuffers(1, &self->fb);
++	glDeleteTextures(1, &self->tex);
++
++	free(self);
++	*fb = NULL;
++}
++
++GLuint bs_egl_fb_name(struct bs_egl_fb *self)
++{
++	assert(self);
++	return self->fb;
++}
++
++bool bs_egl_target_texture2D(struct bs_egl *self, EGLImageKHR image)
++{
++	assert(self);
++	assert(self->EGLImageTargetTexture2DOES);
++	self->EGLImageTargetTexture2DOES(GL_TEXTURE_2D, (GLeglImageOES)image);
++	GLint error = glGetError();
++	return (error == GL_NO_ERROR);
++}
++
++EGLSyncKHR bs_egl_create_sync(struct bs_egl *self, EGLenum type, const EGLint *attrib_list)
++{
++	return self->CreateSyncKHR(self->display, type, attrib_list);
++}
++
++EGLint bs_egl_wait_sync(struct bs_egl *self, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout)
++{
++	return self->ClientWaitSyncKHR(self->display, sync, flags, timeout);
++}
++
++EGLBoolean bs_egl_destroy_sync(struct bs_egl *self, EGLSyncKHR sync)
++{
++	return self->DestroySyncKHR(self->display, sync);
++}
++
++bool bs_egl_has_extension(const char *extension, const char *extensions)
++{
++	const char *start, *where, *terminator;
++	start = extensions;
++	for (;;) {
++		where = (char *)strstr((const char *)start, extension);
++		if (!where)
++			break;
++		terminator = where + strlen(extension);
++		if (where == start || *(where - 1) == ' ')
++			if (*terminator == ' ' || *terminator == '\0')
++				return true;
++		start = terminator;
++	}
++	return false;
++}
++
++static const char *get_egl_error()
++{
++	switch (eglGetError()) {
++		case EGL_SUCCESS:
++			return "EGL_SUCCESS";
++		case EGL_NOT_INITIALIZED:
++			return "EGL_NOT_INITIALIZED";
++		case EGL_BAD_ACCESS:
++			return "EGL_BAD_ACCESS";
++		case EGL_BAD_ALLOC:
++			return "EGL_BAD_ALLOC";
++		case EGL_BAD_ATTRIBUTE:
++			return "EGL_BAD_ATTRIBUTE";
++		case EGL_BAD_CONTEXT:
++			return "EGL_BAD_CONTEXT";
++		case EGL_BAD_CONFIG:
++			return "EGL_BAD_CONFIG";
++		case EGL_BAD_CURRENT_SURFACE:
++			return "EGL_BAD_CURRENT_SURFACE";
++		case EGL_BAD_DISPLAY:
++			return "EGL_BAD_DISPLAY";
++		case EGL_BAD_SURFACE:
++			return "EGL_BAD_SURFACE";
++		case EGL_BAD_MATCH:
++			return "EGL_BAD_MATCH";
++		case EGL_BAD_PARAMETER:
++			return "EGL_BAD_PARAMETER";
++		case EGL_BAD_NATIVE_PIXMAP:
++			return "EGL_BAD_NATIVE_PIXMAP";
++		case EGL_BAD_NATIVE_WINDOW:
++			return "EGL_BAD_NATIVE_WINDOW";
++		case EGL_CONTEXT_LOST:
++			return "EGL_CONTEXT_LOST";
++		default:
++			return "EGL_???";
++	}
++}
++
++static const char *get_gl_framebuffer_error()
++{
++	switch (glCheckFramebufferStatus(GL_FRAMEBUFFER)) {
++		case GL_FRAMEBUFFER_COMPLETE:
++			return "GL_FRAMEBUFFER_COMPLETE";
++		case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
++			return "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
++		case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
++			return "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
++		case GL_FRAMEBUFFER_UNSUPPORTED:
++			return "GL_FRAMEBUFFER_UNSUPPORTED";
++		case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS:
++			return "GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS";
++		default:
++			return "GL_FRAMEBUFFER_???";
++	}
++}
+diff --git a/ui/ozone/demo/gl.c b/ui/ozone/demo/gl.c
+new file mode 100644
+index 0000000..ebd71f8
+--- /dev/null
++++ b/ui/ozone/demo/gl.c
+@@ -0,0 +1,95 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++GLuint bs_gl_shader_create(GLenum type, const GLchar *src)
++{
++	assert(src);
++	GLuint shader = glCreateShader(type);
++	if (!shader) {
++		bs_debug_error("failed call to glCreateShader(%d)", type);
++		return 0;
++	}
++
++	glShaderSource(shader, 1, &src, NULL);
++	glCompileShader(shader);
++
++	GLint status;
++	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
++	if (status == GL_FALSE) {
++		GLint log_len = 0;
++		glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_len);
++		char *shader_log = calloc(log_len, sizeof(char));
++		assert(shader_log);
++		glGetShaderInfoLog(shader, log_len, NULL, shader_log);
++		bs_debug_error("failed to compile shader: %s", shader_log);
++		free(shader_log);
++		glDeleteShader(shader);
++		return 0;
++	}
++
++	return shader;
++}
++
++GLuint bs_gl_program_create_vert_frag_bind(const GLchar *vert_src, const GLchar *frag_src,
++					   struct bs_gl_program_create_binding *bindings)
++{
++	assert(vert_src);
++	assert(frag_src);
++	GLuint program = glCreateProgram();
++	if (!program) {
++		bs_debug_error("failed to create program");
++		return 0;
++	}
++
++	GLuint vert_shader = bs_gl_shader_create(GL_VERTEX_SHADER, vert_src);
++	if (!vert_shader) {
++		bs_debug_error("failed to create vertex shader");
++		glDeleteProgram(program);
++		return 0;
++	}
++
++	GLuint frag_shader = bs_gl_shader_create(GL_FRAGMENT_SHADER, frag_src);
++	if (!frag_shader) {
++		bs_debug_error("failed to create fragment shader");
++		glDeleteShader(vert_shader);
++		glDeleteProgram(program);
++		return 0;
++	}
++
++	glAttachShader(program, vert_shader);
++	glAttachShader(program, frag_shader);
++	if (bindings) {
++		for (size_t binding_index = 0; bindings[binding_index].name != NULL;
++		     binding_index++) {
++			const struct bs_gl_program_create_binding *binding =
++			    &bindings[binding_index];
++			glBindAttribLocation(program, binding->index, binding->name);
++		}
++	}
++	glLinkProgram(program);
++	glDetachShader(program, vert_shader);
++	glDetachShader(program, frag_shader);
++	glDeleteShader(vert_shader);
++	glDeleteShader(frag_shader);
++
++	GLint status;
++	glGetProgramiv(program, GL_LINK_STATUS, &status);
++	if (!status) {
++		GLint log_len = 0;
++		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_len);
++		char *program_log = calloc(log_len, sizeof(char));
++		assert(program_log);
++		glGetProgramInfoLog(program, log_len, NULL, program_log);
++		bs_debug_error("failed to link program: %s", program_log);
++		free(program_log);
++		glDeleteProgram(program);
++		return 0;
++	}
++
++	return program;
++}
+diff --git a/ui/ozone/demo/mapped_texture_test.c b/ui/ozone/demo/mapped_texture_test.c
+new file mode 100644
+index 0000000..96f9ee3
+--- /dev/null
++++ b/ui/ozone/demo/mapped_texture_test.c
+@@ -0,0 +1,427 @@
++/*
++ * Copyright 2017 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++/*
++  The mapped_texture_test test consists of:
++    * Importing external buffers as EGL Images
++    * Drawing an ellipse using the CPU
++    * Binding CPU drawn buffer as a texture and sampling from it
++    * Using KMS to scanout the resultant framebuffer
++ */
++
++#include <getopt.h>
++
++#include "bs_drm.h"
++
++// double buffering
++#define NUM_BUFFERS 2
++
++struct offscreen_buffer {
++	struct gbm_bo *bo;
++	GLuint tex;
++	EGLImageKHR image;
++	const struct bs_draw_format *draw_format;
++};
++
++struct framebuffer {
++	struct gbm_bo *bo;
++	uint32_t fb_id;
++	EGLImageKHR image;
++	struct bs_egl_fb *egl_fb;
++};
++
++struct gl_resources {
++	GLuint program;
++	GLuint vbo;
++};
++
++// clang-format off
++static const GLfloat vertices[] = {
++	// x       y     u     v
++	-0.25f, -0.25f, 0.0f, 0.0f, // Bottom left
++	-0.25f,  0.25f, 0.0f, 1.0f, // Top left
++	 0.25f,  0.25f, 1.0f, 1.0f, // Top right
++	 0.25f, -0.25f, 1.0f, 0.0f, // Bottom Right
++};
++
++static const int binding_xy = 0;
++static const int binding_uv = 1;
++
++static const GLubyte indices[] = {
++	0, 1, 2,
++	0, 2, 3
++};
++
++// clang-format on
++
++static const GLchar *vert =
++    "attribute vec2 xy;\n"
++    "attribute vec2 uv;\n"
++    "varying vec2 tex_coordinate;\n"
++    "void main() {\n"
++    "    gl_Position = vec4(xy, 0, 1);\n"
++    "    tex_coordinate = uv;\n"
++    "}\n";
++
++static const GLchar *frag =
++    "precision mediump float;\n"
++    "uniform sampler2D ellipse;\n"
++    "varying vec2 tex_coordinate;\n"
++    "void main() {\n"
++    "    gl_FragColor = texture2D(ellipse, tex_coordinate);\n"
++    "}\n";
++
++static bool create_framebuffer(int display_fd, struct gbm_device *gbm, struct bs_egl *egl,
++			       uint32_t width, uint32_t height, struct framebuffer *fb)
++{
++	fb->bo = gbm_bo_create(gbm, width, height, GBM_FORMAT_XRGB8888,
++			       GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
++	if (!fb->bo) {
++		bs_debug_error("failed to create a gbm buffer.");
++		goto delete_gl_fb;
++	}
++
++	fb->fb_id = bs_drm_fb_create_gbm(fb->bo);
++	if (!fb->fb_id) {
++		bs_debug_error("failed to create framebuffer from buffer object");
++		goto delete_gl_image;
++	}
++
++	fb->image = bs_egl_image_create_gbm(egl, fb->bo);
++	if (fb->image == EGL_NO_IMAGE_KHR) {
++		bs_debug_error("failed to make image from buffer object");
++		goto delete_fb;
++	}
++
++	fb->egl_fb = bs_egl_fb_new(egl, fb->image);
++	if (!fb->egl_fb) {
++		bs_debug_error("failed to make rednering framebuffer for buffer object");
++		goto delete_gbm_bo;
++	}
++
++	return true;
++
++delete_gl_fb:
++	bs_egl_fb_destroy(&fb->egl_fb);
++delete_gl_image:
++	bs_egl_image_destroy(egl, &fb->image);
++delete_fb:
++	drmModeRmFB(display_fd, fb->fb_id);
++delete_gbm_bo:
++	gbm_bo_destroy(fb->bo);
++	return false;
++}
++
++static bool add_offscreen_texture(struct gbm_device *gbm, struct bs_egl *egl,
++				  struct offscreen_buffer *buffer, uint32_t width, uint32_t height,
++				  uint32_t flags)
++{
++	buffer->bo =
++	    gbm_bo_create(gbm, width, height, bs_get_pixel_format(buffer->draw_format), flags);
++	if (!buffer->bo) {
++		bs_debug_error("failed to allocate offscreen buffer object: format=%s \n",
++			       bs_get_format_name(buffer->draw_format));
++		goto destroy_offscreen_buffer;
++	}
++
++	buffer->image = bs_egl_image_create_gbm(egl, buffer->bo);
++	if (buffer->image == EGL_NO_IMAGE_KHR) {
++		bs_debug_error("failed to create offscreen egl image");
++		goto destroy_offscreen_bo;
++	}
++
++	glActiveTexture(GL_TEXTURE1);
++	glGenTextures(1, &buffer->tex);
++	glBindTexture(GL_TEXTURE_2D, buffer->tex);
++
++	if (!bs_egl_target_texture2D(egl, buffer->image)) {
++		bs_debug_error("failed to import egl image as texture");
++		goto destroy_offscreen_image;
++	}
++
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++
++	return true;
++
++destroy_offscreen_image:
++	glDeleteTextures(1, &buffer->tex);
++	bs_egl_image_destroy(egl, &buffer->image);
++destroy_offscreen_bo:
++	gbm_bo_destroy(buffer->bo);
++destroy_offscreen_buffer:
++	return false;
++}
++
++static bool init_gl(struct bs_egl_fb *fb, uint32_t width, uint32_t height,
++		    struct gl_resources *resources)
++{
++	struct bs_gl_program_create_binding bindings[] = {
++		{ binding_xy, "xy" }, { binding_uv, "uv" }, { 2, NULL },
++	};
++
++	resources->program = bs_gl_program_create_vert_frag_bind(vert, frag, bindings);
++	if (!resources->program) {
++		bs_debug_error("failed to compile shader program");
++		return false;
++	}
++
++	glGenBuffers(1, &resources->vbo);
++	glBindBuffer(GL_ARRAY_BUFFER, resources->vbo);
++	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
++
++	glBindFramebuffer(GL_FRAMEBUFFER, bs_egl_fb_name(fb));
++	glViewport(0, 0, (GLint)width, (GLint)height);
++
++	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
++	glClear(GL_COLOR_BUFFER_BIT);
++
++	glUseProgram(resources->program);
++
++	glUniform1i(glGetUniformLocation(resources->program, "ellipse"), 1);
++	glEnableVertexAttribArray(binding_xy);
++	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
++
++	glEnableVertexAttribArray(binding_uv);
++	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
++			      (void *)(2 * sizeof(GLfloat)));
++	return true;
++}
++
++static void draw_textured_quad(GLuint tex)
++{
++	glClear(GL_COLOR_BUFFER_BIT);
++	glActiveTexture(GL_TEXTURE1);
++	glBindTexture(GL_TEXTURE_2D, tex);
++	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE, indices);
++}
++
++static const struct option longopts[] = {
++	{ "help", no_argument, NULL, 'h' },
++	{ "format", required_argument, NULL, 'f' },
++	{ "dma-buf", no_argument, NULL, 'b' },
++	{ "gem", no_argument, NULL, 'g' },
++	{ "dumb", no_argument, NULL, 'd' },
++	{ "tiled", no_argument, NULL, 't' },
++	{ 0, 0, 0, 0 },
++};
++
++static void print_help(const char *argv0)
++{
++	printf("Usage: %s [OPTIONS]\n", argv0);
++	printf(" -h, --help             Print help.\n");
++	printf(" -f, --format FOURCC    format of texture (defaults to ARGB8888)\n");
++	printf(" -b, --dma-buf  Use dma-buf mmap (by default).\n");
++	printf(" -g, --gem      Use GEM map.\n");
++	printf(" -d, --dumb     Use dump map.\n");
++	printf(" -t, --tiled    Use potentially tiled buffer.\n");
++}
++
++static void page_flip_handler(int fd, unsigned int frame, unsigned int sec, unsigned int usec,
++			      void *data)
++{
++	int *waiting_for_flip = data;
++	*waiting_for_flip = 0;
++}
++
++void flush_egl(struct bs_egl *egl, EGLImageKHR image)
++{
++	bs_egl_image_flush_external(egl, image);
++	EGLSyncKHR sync = bs_egl_create_sync(egl, EGL_SYNC_FENCE_KHR, NULL);
++	bs_egl_wait_sync(egl, sync, 0, EGL_FOREVER_KHR);
++	bs_egl_destroy_sync(egl, sync);
++}
++
++int main(int argc, char **argv)
++{
++	int ret = 1;
++	int display_fd = bs_drm_open_main_display();
++	if (display_fd < 0) {
++		bs_debug_error("failed to open card for display");
++		goto out;
++	}
++
++	struct offscreen_buffer buffer;
++	buffer.draw_format = bs_get_draw_format_from_name("ARGB8888");
++	struct bs_mapper *mapper = NULL;
++	uint32_t flags = GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR;
++
++	int c;
++	while ((c = getopt_long(argc, argv, "f:bgdth", longopts, NULL)) != -1) {
++		switch (c) {
++			case 'f':
++				if (!bs_parse_draw_format(optarg, &buffer.draw_format)) {
++					printf("choose the default format ARGB8888\n");
++				}
++				printf("format=%s\n", bs_get_format_name(buffer.draw_format));
++				break;
++			case 'b':
++				mapper = bs_mapper_dma_buf_new();
++				printf("using dma-buf mmap\n");
++				break;
++			case 'g':
++				mapper = bs_mapper_gem_new();
++				printf("using GEM map\n");
++				break;
++			case 'd':
++				mapper = bs_mapper_dumb_new(display_fd);
++				printf("using dumb map\n");
++				break;
++			case 't':
++				flags = GBM_BO_USE_RENDERING;
++				break;
++			case 'h':
++			default:
++				print_help(argv[0]);
++				goto destroy_display_fd;
++		}
++	}
++
++	// Use dma-buf mmap by default, in case any arguments aren't selected.
++	if (!mapper) {
++		mapper = bs_mapper_dma_buf_new();
++		printf("using dma-buf mmap\n");
++	}
++
++	if (!mapper) {
++		bs_debug_error("failed to create mapper object");
++		goto destroy_display_fd;
++	}
++
++	uint32_t width;
++	uint32_t height;
++
++	struct gbm_device *gbm = gbm_create_device(display_fd);
++	if (!gbm) {
++		bs_debug_error("failed to create gbm device");
++		goto destroy_mapper;
++	}
++
++	struct bs_drm_pipe pipe = { 0 };
++	if (!bs_drm_pipe_make(display_fd, &pipe)) {
++		bs_debug_error("failed to make pipe");
++		goto destroy_gbm_device;
++	}
++
++	drmModeConnector *connector = drmModeGetConnector(display_fd, pipe.connector_id);
++	drmModeModeInfo *mode = &connector->modes[0];
++	width = mode->hdisplay;
++	height = mode->vdisplay;
++
++	struct bs_egl *egl = bs_egl_new();
++	if (!bs_egl_setup(egl)) {
++		bs_debug_error("failed to setup egl context");
++		goto destroy_gbm_device;
++	}
++
++	struct framebuffer fbs[NUM_BUFFERS] = {};
++	uint32_t front_buffer = 0;
++	for (size_t i = 0; i < NUM_BUFFERS; i++) {
++		if (!create_framebuffer(display_fd, gbm, egl, width, height, &fbs[i])) {
++			bs_debug_error("failed to create framebuffer");
++			goto delete_framebuffers;
++		}
++	}
++
++	if (!add_offscreen_texture(gbm, egl, &buffer, width / 4, height / 4, flags)) {
++		bs_debug_error("failed to create offscreen texture");
++		goto destroy_offscreen_buffer;
++	}
++
++	const struct framebuffer *back_fb = &fbs[front_buffer ^ 1];
++	struct gl_resources resources;
++	if (!init_gl(back_fb->egl_fb, width, height, &resources)) {
++		bs_debug_error("failed to initialize GL resources.\n");
++		goto destroy_gl_resources;
++	}
++
++	flush_egl(egl, back_fb->image);
++
++	ret = drmModeSetCrtc(display_fd, pipe.crtc_id, fbs[front_buffer].fb_id, 0 /* x */,
++			     0 /* y */, &pipe.connector_id, 1 /* connector count */, mode);
++	if (ret) {
++		bs_debug_error("failed to set crtc: %d", ret);
++		goto destroy_gl_resources;
++	}
++
++	drmEventContext evctx = {
++		.version = DRM_EVENT_CONTEXT_VERSION, .page_flip_handler = page_flip_handler,
++	};
++	fd_set fds;
++
++	// The test takes about 2 seconds to complete.
++	const size_t test_frames = 120;
++	for (size_t i = 0; i < test_frames; i++) {
++		int waiting_for_flip = 1;
++
++		const struct framebuffer *back_fb = &fbs[front_buffer ^ 1];
++		glBindFramebuffer(GL_FRAMEBUFFER, bs_egl_fb_name(back_fb->egl_fb));
++		if (!bs_draw_ellipse(mapper, buffer.bo, buffer.draw_format,
++				     (float)i / test_frames)) {
++			bs_debug_error("failed to draw to buffer");
++			goto destroy_gl_resources;
++		}
++
++		draw_textured_quad(buffer.tex);
++
++		flush_egl(egl, back_fb->image);
++
++		ret = drmModePageFlip(display_fd, pipe.crtc_id, back_fb->fb_id,
++				      DRM_MODE_PAGE_FLIP_EVENT, &waiting_for_flip);
++		if (ret) {
++			bs_debug_error("failed to queue page flip");
++			goto destroy_gl_resources;
++		}
++
++		while (waiting_for_flip) {
++			FD_ZERO(&fds);
++			FD_SET(0, &fds);
++			FD_SET(display_fd, &fds);
++			int ret = select(display_fd + 1, &fds, NULL, NULL, NULL);
++			if (ret < 0) {
++				bs_debug_error("select err: %s", strerror(errno));
++				goto destroy_gl_resources;
++			} else if (FD_ISSET(0, &fds)) {
++				bs_debug_error("exit due to user-input");
++				goto destroy_gl_resources;
++			} else if (FD_ISSET(display_fd, &fds)) {
++				drmHandleEvent(display_fd, &evctx);
++			}
++		}
++
++		front_buffer ^= 1;
++	}
++
++destroy_gl_resources:
++	glBindBuffer(GL_ARRAY_BUFFER, 0);
++	glUseProgram(0);
++	glBindFramebuffer(GL_FRAMEBUFFER, 0);
++	glBindTexture(GL_TEXTURE_2D, 0);
++	glDeleteProgram(resources.program);
++	glDeleteBuffers(1, &resources.vbo);
++destroy_offscreen_buffer:
++	glDeleteTextures(1, &buffer.tex);
++	bs_egl_image_destroy(egl, &buffer.image);
++	gbm_bo_destroy(buffer.bo);
++delete_framebuffers:
++	for (size_t i = 0; i < NUM_BUFFERS; i++) {
++		bs_egl_fb_destroy(&fbs[i].egl_fb);
++		bs_egl_image_destroy(egl, &fbs[i].image);
++		drmModeRmFB(display_fd, fbs[i].fb_id);
++		gbm_bo_destroy(fbs[i].bo);
++	}
++	bs_egl_destroy(&egl);
++destroy_gbm_device:
++	gbm_device_destroy(gbm);
++destroy_mapper:
++	bs_mapper_destroy(mapper);
++destroy_display_fd:
++	close(display_fd);
++out:
++	return ret;
++}
+diff --git a/ui/ozone/demo/mmap.c b/ui/ozone/demo/mmap.c
+new file mode 100644
+index 0000000..de43463
+--- /dev/null
++++ b/ui/ozone/demo/mmap.c
+@@ -0,0 +1,232 @@
++/*
++ * Copyright 2017 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include <linux/types.h>
++
++struct dma_buf_sync {
++  __u64 flags;
++};
++
++#define DMA_BUF_SYNC_READ (1 << 0)
++#define DMA_BUF_SYNC_WRITE (2 << 0)
++#define DMA_BUF_SYNC_RW (DMA_BUF_SYNC_READ | DMA_BUF_SYNC_WRITE)
++#define DMA_BUF_SYNC_START (0 << 2)
++#define DMA_BUF_SYNC_END (1 << 2)
++
++#define DMA_BUF_BASE 'b'
++#define DMA_BUF_IOCTL_SYNC _IOW(DMA_BUF_BASE, 0, struct dma_buf_sync)
++
++#include <sys/ioctl.h>
++
++#include "bs_drm.h"
++
++#define HANDLE_EINTR(x)                                                  \
++	({                                                               \
++		int eintr_wrapper_counter = 0;                           \
++		int eintr_wrapper_result;                                \
++		do {                                                     \
++			eintr_wrapper_result = (x);                      \
++		} while (eintr_wrapper_result == -1 && errno == EINTR && \
++			 eintr_wrapper_counter++ < 100);                 \
++		eintr_wrapper_result;                                    \
++	})
++
++struct bs_map_info {
++	size_t plane_index;
++	void *ptr;
++	void *map_data;
++};
++
++typedef void *(*bs_map_t)(struct bs_mapper *mapper, struct gbm_bo *bo, size_t plane,
++			  struct bs_map_info *info);
++typedef void (*bs_unmap_t)(struct gbm_bo *bo, struct bs_map_info *info);
++
++struct bs_mapper {
++	bs_map_t map_plane_fn;
++	bs_unmap_t unmap_plane_fn;
++	int device_fd;
++};
++
++static void *dma_buf_map(struct bs_mapper *mapper, struct gbm_bo *bo, size_t plane,
++			 struct bs_map_info *info)
++{
++	int drm_prime_fd = gbm_bo_get_plane_fd(bo, plane);
++	uint32_t handle = gbm_bo_get_plane_handle(bo, plane).u32;
++	size_t length = 0;
++
++	for (size_t p = 0; p <= plane; p++) {
++		if (gbm_bo_get_plane_handle(bo, p).u32 == handle)
++			length += gbm_bo_get_plane_size(bo, p);
++	}
++
++	void *ptr = mmap(NULL, length, (PROT_READ | PROT_WRITE), MAP_SHARED, drm_prime_fd, 0);
++	if (ptr == MAP_FAILED) {
++		bs_debug_error("dma-buf mmap returned MAP_FAILED: %d", errno);
++		ptr = MAP_FAILED;
++	} else {
++		ptr += gbm_bo_get_plane_offset(bo, plane);
++	}
++
++	struct dma_buf_sync sync_start = { 0 };
++	sync_start.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
++	int ret = HANDLE_EINTR(ioctl(drm_prime_fd, DMA_BUF_IOCTL_SYNC, &sync_start));
++	if (ret)
++		bs_debug_error("DMA_BUF_IOCTL_SYNC failed");
++
++	close(drm_prime_fd);
++	return ptr;
++}
++
++static void dma_buf_unmap(struct gbm_bo *bo, struct bs_map_info *info)
++{
++	struct dma_buf_sync sync_end = { 0 };
++	sync_end.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
++	int drm_prime_fd = gbm_bo_get_plane_fd(bo, info->plane_index);
++	int ret = HANDLE_EINTR(ioctl(drm_prime_fd, DMA_BUF_IOCTL_SYNC, &sync_end));
++	close(drm_prime_fd);
++	if (ret)
++		bs_debug_error("DMA_BUF_IOCTL_SYNC failed");
++
++	void *addr = info->ptr;
++	addr -= gbm_bo_get_plane_offset(bo, info->plane_index);
++	ret = munmap(addr, gbm_bo_get_plane_size(bo, info->plane_index));
++	if (ret)
++		bs_debug_error("dma-buf unmap failed.");
++}
++
++static void *gem_map(struct bs_mapper *mapper, struct gbm_bo *bo, size_t plane,
++		     struct bs_map_info *info)
++{
++	uint32_t w = gbm_bo_get_width(bo);
++	uint32_t h = gbm_bo_get_height(bo);
++	uint32_t stride;
++	void *ptr =
++	    gbm_bo_map(bo, 0, 0, w, h, GBM_BO_TRANSFER_READ_WRITE, &stride, &info->map_data, plane);
++	return ptr;
++}
++
++static void gem_unmap(struct gbm_bo *bo, struct bs_map_info *info)
++{
++	gbm_bo_unmap(bo, info->map_data);
++}
++
++static void *dumb_map(struct bs_mapper *mapper, struct gbm_bo *bo, size_t plane,
++		      struct bs_map_info *info)
++{
++	if (plane) {
++		bs_debug_error("dump map supports only single plane buffer.");
++		return MAP_FAILED;
++	}
++
++	int prime_fd = gbm_bo_get_fd(bo);
++	uint32_t size = gbm_bo_get_plane_size(bo, plane);
++
++	uint32_t bo_handle;
++	int ret = drmPrimeFDToHandle(mapper->device_fd, prime_fd, &bo_handle);
++	if (ret) {
++		bs_debug_error("dump map failed.");
++		return MAP_FAILED;
++	}
++
++	struct drm_mode_map_dumb mmap_arg = { 0 };
++	mmap_arg.handle = bo_handle;
++
++	ret = drmIoctl(mapper->device_fd, DRM_IOCTL_MODE_MAP_DUMB, &mmap_arg);
++	if (ret) {
++		bs_debug_error("failed DRM_IOCTL_MODE_MAP_DUMB: %d", ret);
++		return MAP_FAILED;
++	}
++
++	if (mmap_arg.offset == 0) {
++		bs_debug_error("DRM_IOCTL_MODE_MAP_DUMB returned 0 offset");
++		return MAP_FAILED;
++	}
++
++	void *ptr = mmap(NULL, size, (PROT_READ | PROT_WRITE), MAP_SHARED, mapper->device_fd,
++			 mmap_arg.offset);
++
++	if (ptr == MAP_FAILED) {
++		bs_debug_error("mmap returned MAP_FAILED: %d", errno);
++		return MAP_FAILED;
++	}
++
++	close(prime_fd);
++	return ptr;
++}
++
++static void dumb_unmap(struct gbm_bo *bo, struct bs_map_info *info)
++{
++	int ret = munmap(info->ptr, gbm_bo_get_plane_size(bo, info->plane_index));
++	if (ret)
++		bs_debug_error("dump unmap failed.");
++}
++
++struct bs_mapper *bs_mapper_dma_buf_new()
++{
++	struct bs_mapper *mapper = calloc(1, sizeof(struct bs_mapper));
++	assert(mapper);
++	mapper->map_plane_fn = dma_buf_map;
++	mapper->unmap_plane_fn = dma_buf_unmap;
++	mapper->device_fd = -1;
++	return mapper;
++}
++
++struct bs_mapper *bs_mapper_gem_new()
++{
++	struct bs_mapper *mapper = calloc(1, sizeof(struct bs_mapper));
++	assert(mapper);
++	mapper->map_plane_fn = gem_map;
++	mapper->unmap_plane_fn = gem_unmap;
++	mapper->device_fd = -1;
++	return mapper;
++}
++
++struct bs_mapper *bs_mapper_dumb_new(int device_fd)
++{
++	assert(device_fd >= 0);
++	struct bs_mapper *mapper = calloc(1, sizeof(struct bs_mapper));
++	assert(mapper);
++	mapper->map_plane_fn = dumb_map;
++	mapper->unmap_plane_fn = dumb_unmap;
++	mapper->device_fd = dup(device_fd);
++	assert(mapper->device_fd >= 0);
++	return mapper;
++}
++
++void bs_mapper_destroy(struct bs_mapper *mapper)
++{
++	assert(mapper);
++	if (mapper->device_fd >= 0)
++		close(mapper->device_fd);
++
++	free(mapper);
++}
++
++void *bs_mapper_map(struct bs_mapper *mapper, struct gbm_bo *bo, size_t plane, void **map_data)
++{
++	assert(mapper);
++	assert(bo);
++	assert(map_data);
++	struct bs_map_info *info = calloc(1, sizeof(struct bs_map_info));
++	info->plane_index = plane;
++	void *ptr = mapper->map_plane_fn(mapper, bo, plane, info);
++	if (ptr == MAP_FAILED) {
++		free(info);
++		return MAP_FAILED;
++	}
++
++	info->ptr = ptr;
++	*map_data = info;
++	return info->ptr;
++}
++
++void bs_mapper_unmap(struct bs_mapper *mapper, struct gbm_bo *bo, void *map_data)
++{
++	struct bs_map_info *info = map_data;
++	assert(info);
++	mapper->unmap_plane_fn(bo, info);
++	free(info);
++}
+diff --git a/ui/ozone/demo/open.c b/ui/ozone/demo/open.c
+new file mode 100644
+index 0000000..a7cc582
+--- /dev/null
++++ b/ui/ozone/demo/open.c
+@@ -0,0 +1,86 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++// Suppresses warnings for our usage of asprintf with one of the parameters.
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wformat-nonliteral"
++void bs_open_enumerate(const char *format, unsigned start, unsigned end,
++		       bs_open_enumerate_func body, void *user)
++{
++	assert(end >= start);
++	for (unsigned dev_index = start; dev_index < end; dev_index++) {
++		char *file_path = NULL;
++		int ret = asprintf(&file_path, format, dev_index);
++		if (ret == -1)
++			continue;
++		assert(file_path);
++
++		int fd = open(file_path, O_RDWR);
++		free(file_path);
++		if (fd < 0)
++			continue;
++
++		bool end = body(user, fd);
++		close(fd);
++
++		if (end)
++			return;
++	}
++}
++#pragma GCC diagnostic pop
++
++struct bs_open_filtered_user {
++	bs_open_filter_func filter;
++	int fd;
++};
++
++static bool bs_open_filtered_body(void *user, int fd)
++{
++	struct bs_open_filtered_user *data = (struct bs_open_filtered_user *)user;
++	if (data->filter(fd)) {
++		data->fd = dup(fd);
++		return true;
++	}
++
++	return false;
++}
++
++int bs_open_filtered(const char *format, unsigned start, unsigned end, bs_open_filter_func filter)
++{
++	struct bs_open_filtered_user data = { filter, -1 };
++	bs_open_enumerate(format, start, end, bs_open_filtered_body, &data);
++	return data.fd;
++}
++
++struct bs_open_ranked_user {
++	bs_open_rank_func rank;
++	uint32_t rank_index;
++	int fd;
++};
++
++static bool bs_open_ranked_body(void *user, int fd)
++{
++	struct bs_open_ranked_user *data = (struct bs_open_ranked_user *)user;
++	uint32_t rank_index = data->rank(fd);
++
++	if (data->rank_index > rank_index) {
++		data->rank_index = rank_index;
++		if (data->fd >= 0)
++			close(data->fd);
++		data->fd = dup(fd);
++	}
++
++	return rank_index == 0;
++}
++
++int bs_open_ranked(const char *format, unsigned start, unsigned end, bs_open_rank_func rank)
++{
++	struct bs_open_ranked_user data = { rank, UINT32_MAX, -1 };
++	bs_open_enumerate(format, start, end, bs_open_ranked_body, &data);
++	return data.fd;
++}
+diff --git a/ui/ozone/demo/pipe.c b/ui/ozone/demo/pipe.c
+new file mode 100644
+index 0000000..047eac6
+--- /dev/null
++++ b/ui/ozone/demo/pipe.c
+@@ -0,0 +1,34 @@
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "bs_drm.h"
++
++bool bs_pipe_make(void *context, bs_make_pipe_piece *pieces, size_t piece_count, void *out_pipe,
++		  size_t pipe_size)
++{
++	bool success = false;
++	char *pipe_stack = calloc(pipe_size, piece_count + 1);
++	for (size_t i = 0; i < piece_count;) {
++		char *pipe_ptr = pipe_stack + i * pipe_size;
++		if (pieces[i](context, pipe_ptr)) {
++			i++;
++			memcpy(pipe_ptr + pipe_size, pipe_ptr, pipe_size);
++			continue;
++		}
++
++		if (i == 0)
++			goto out;
++
++		i--;
++	}
++
++	memcpy(out_pipe, pipe_stack + (piece_count - 1) * pipe_size, pipe_size);
++	success = true;
++
++out:
++	free(pipe_stack);
++	return success;
++}
+-- 
+2.7.4
+

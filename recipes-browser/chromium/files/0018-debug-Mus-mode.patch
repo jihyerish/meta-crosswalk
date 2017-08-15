@@ -1,0 +1,32 @@
+From 3fc1c88abdc417116de9e892efc7c2db387009fb Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 15:11:35 -0700
+Subject: [PATCH 18/26] debug: Mus mode
+
+---
+ ui/aura/env.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/ui/aura/env.cc b/ui/aura/env.cc
+index 0f412fb..5b5e495 100644
+--- a/ui/aura/env.cc
++++ b/ui/aura/env.cc
+@@ -161,6 +161,7 @@ Env::Env(Mode mode)
+ 
+ void Env::Init() {
+   if (mode_ == Mode::MUS) {
++    VLOG(1) << " Mus mode";
+     EnableMusOSExchangeDataProvider();
+ #if defined(USE_OZONE)
+     // Required by all Aura-using clients of services/ui
+@@ -169,6 +170,7 @@ void Env::Init() {
+     return;
+   }
+ 
++  VLOG(1) << "Local mode";
+ #if defined(USE_OZONE)
+   // The ozone platform can provide its own event source. So initialize the
+   // platform before creating the default event source. If running inside mus
+-- 
+2.7.4
+

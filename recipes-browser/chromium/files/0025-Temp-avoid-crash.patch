@@ -1,0 +1,30 @@
+From f6c10e5f621d6f84d38da6551ea899d0a3e45fe8 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 17:08:48 -0700
+Subject: [PATCH 25/26] [Temp] avoid crash
+
+---
+ ui/aura/mus/window_tree_client.cc | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/ui/aura/mus/window_tree_client.cc b/ui/aura/mus/window_tree_client.cc
+index 7987464..5472189 100644
+--- a/ui/aura/mus/window_tree_client.cc
++++ b/ui/aura/mus/window_tree_client.cc
+@@ -1478,8 +1478,11 @@ void WindowTreeClient::OnChangeCompleted(uint32_t change_id, bool success) {
+   for (auto& observer : test_observers_)
+     observer.OnChangeCompleted(change_id, change->change_type(), success);
+ 
+-  if (!success)
+-    change->ChangeFailed();
++  if (!success) {
++   // change->ChangeFailed();
++   VLOG(1) << "ozone-gbm: just return here to avoid crash";
++    return;
++  }
+ 
+   InFlightChange* next_change = GetOldestInFlightChangeMatching(*change);
+   if (next_change) {
+-- 
+2.7.4
+

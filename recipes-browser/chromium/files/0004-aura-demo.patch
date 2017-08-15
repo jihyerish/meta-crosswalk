@@ -1,0 +1,42 @@
+From 225502b8320f159096f7dd51ddf5e58c27a0a6e3 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Fri, 16 Jun 2017 23:46:39 -0700
+Subject: [PATCH 04/26] aura demo
+
+---
+ ui/aura/demo/demo_main.cc | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/ui/aura/demo/demo_main.cc b/ui/aura/demo/demo_main.cc
+index 0af26d7..21b899c 100644
+--- a/ui/aura/demo/demo_main.cc
++++ b/ui/aura/demo/demo_main.cc
+@@ -32,6 +32,8 @@
+ #include "ui/gfx/geometry/rect.h"
+ #include "ui/gfx/skia_util.h"
+ #include "ui/gl/init/gl_factory.h"
++#include "ui/ozone/public/ozone_platform.h"
++#include "ui/ozone/public/ozone_gpu_test_helper.h"
+ 
+ #if defined(USE_X11)
+ #include "ui/gfx/x/x11_connection.h"  // nogncheck
+@@ -131,6 +133,16 @@ int DemoMain() {
+   gfx::InitializeThreadedX11();
+ #endif
+ 
++ // Helper for applications that do GL on main thread.
++   ui::OzoneGpuTestHelper gpu_helper_;
++   gpu_helper_.Initialize(base::ThreadTaskRunnerHandle::Get(),
++                             base::ThreadTaskRunnerHandle::Get());
++
++  ui::OzonePlatform::InitParams params;
++  params.single_process = false;
++  ui::OzonePlatform::InitializeForUI(params);
++  ui::OzonePlatform::InitializeForGPU(params);
++
+   gl::init::InitializeGLOneOff();
+ 
+ #if defined(OS_WIN)
+-- 
+2.7.4
+

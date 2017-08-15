@@ -1,0 +1,57 @@
+From 61230b9b042e8e7ef6a48bfe7f311f001b7cb6a9 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 16:18:14 -0700
+Subject: [PATCH 20/26] Temp: allow to upload textures
+
+---
+ cc/trees/layer_tree_impl.cc     | 3 ++-
+ cc/trees/proxy_main.cc          | 3 ++-
+ cc/trees/single_thread_proxy.cc | 4 ++--
+ 3 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/cc/trees/layer_tree_impl.cc b/cc/trees/layer_tree_impl.cc
+index 8f1158a..0500ecb 100644
+--- a/cc/trees/layer_tree_impl.cc
++++ b/cc/trees/layer_tree_impl.cc
+@@ -1674,7 +1674,8 @@ void LayerTreeImpl::ProcessUIResourceRequestQueue() {
+ 
+   // If all UI resource evictions were not recreated by processing this queue,
+   // then another commit is required.
+-  if (layer_tree_host_impl_->EvictedUIResourcesExist())
++  // FIXME(ozone-gbm): upload textures.
++  // if (layer_tree_host_impl_->EvictedUIResourcesExist())
+     layer_tree_host_impl_->SetNeedsCommit();
+ }
+ 
+diff --git a/cc/trees/proxy_main.cc b/cc/trees/proxy_main.cc
+index 8632105..c9e6681 100644
+--- a/cc/trees/proxy_main.cc
++++ b/cc/trees/proxy_main.cc
+@@ -190,7 +190,8 @@ void ProxyMain::BeginMainFrame(
+ 
+   // Recreate all UI resources if there were evicted UI resources when the impl
+   // thread initiated the commit.
+-  if (begin_main_frame_state->evicted_ui_resources)
++  // FIXME(ozone-gbm): uplaod textures. 
++  // if (begin_main_frame_state->evicted_ui_resources)
+     layer_tree_host_->GetUIResourceManager()->RecreateUIResources();
+ 
+   layer_tree_host_->RequestMainFrameUpdate();
+diff --git a/cc/trees/single_thread_proxy.cc b/cc/trees/single_thread_proxy.cc
+index 7dc16da..54e623f7 100644
+--- a/cc/trees/single_thread_proxy.cc
++++ b/cc/trees/single_thread_proxy.cc
+@@ -198,8 +198,8 @@ void SingleThreadProxy::DoCommit() {
+ 
+     layer_tree_host_impl_->ReadyToCommit();
+     layer_tree_host_impl_->BeginCommit();
+-
+-    if (layer_tree_host_impl_->EvictedUIResourcesExist())
++    // FIXME(ozone-gbm): uplaod textures. 
++    // if (layer_tree_host_impl_->EvictedUIResourcesExist())
+       layer_tree_host_->GetUIResourceManager()->RecreateUIResources();
+ 
+     layer_tree_host_->FinishCommitOnImplThread(layer_tree_host_impl_.get());
+-- 
+2.7.4
+
