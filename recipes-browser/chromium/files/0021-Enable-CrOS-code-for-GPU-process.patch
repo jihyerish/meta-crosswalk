@@ -1,0 +1,48 @@
+From 4738464847d4e6081c186b7dc2cb238ee0c246ef Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 16:50:21 -0700
+Subject: [PATCH 21/25] Enable CrOS code for GPU process
+
+---
+ content/browser/compositor/gpu_process_transport_factory.cc | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/content/browser/compositor/gpu_process_transport_factory.cc b/content/browser/compositor/gpu_process_transport_factory.cc
+index 409df107..0a5b24a 100644
+--- a/content/browser/compositor/gpu_process_transport_factory.cc
++++ b/content/browser/compositor/gpu_process_transport_factory.cc
+@@ -305,10 +305,8 @@ CreateOverlayCandidateValidator(gfx::AcceleratedWidget widget) {
+ }
+ 
+ static bool ShouldCreateGpuCompositorFrameSink(ui::Compositor* compositor) {
+-#if defined(OS_CHROMEOS)
+   // Software fallback does not happen on Chrome OS.
+   return true;
+-#endif
+ #if defined(OS_WIN)
+   if (::GetProp(compositor->widget(), kForceSoftwareCompositor) &&
+       ::RemoveProp(compositor->widget(), kForceSoftwareCompositor))
+@@ -370,11 +368,10 @@ void GpuProcessTransportFactory::EstablishedGpuChannel(
+ 
+   if (num_attempts > kNumRetriesBeforeSoftwareFallback) {
+     bool fatal = false;
+-#if defined(OS_CHROMEOS)
+     fatal = true;
+-#endif
+     LOG_IF(FATAL, fatal) << "Unable to create a UI graphics context, and "
+                          << "cannot use software compositing on ChromeOS.";
++    VLOG(1) << "ozone-gbm: create_gpu_output_surface = false";
+     create_gpu_output_surface = false;
+   }
+ 
+@@ -440,6 +437,7 @@ void GpuProcessTransportFactory::EstablishedGpuChannel(
+       // display compositor. It shares resources with the worker context, so if
+       // we failed to make a worker context, just start over and try again.
+       if (shared_worker_context_provider_) {
++        VLOG(1) << "ozone-gbm: create the context_provder";
+         // For mus, we create an offscreen context for a mus window, and we will
+         // use CommandBufferProxyImpl::TakeFrontBuffer() to take the context's
+         // front buffer into a mailbox, insert a sync token, and send the
+-- 
+2.7.4
+

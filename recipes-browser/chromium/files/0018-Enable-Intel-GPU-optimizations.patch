@@ -1,0 +1,48 @@
+From f9985f87f4a0e99bc85d39a400cff9d569bafc58 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 15:14:12 -0700
+Subject: [PATCH 18/25] Enable Intel GPU optimizations
+
+---
+ cc/raster/one_copy_raster_buffer_provider.cc | 4 ++--
+ cc/resources/resource_provider.cc            | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/cc/raster/one_copy_raster_buffer_provider.cc b/cc/raster/one_copy_raster_buffer_provider.cc
+index f662e6c..bb54fc6 100644
+--- a/cc/raster/one_copy_raster_buffer_provider.cc
++++ b/cc/raster/one_copy_raster_buffer_provider.cc
+@@ -368,7 +368,7 @@ void OneCopyRasterBufferProvider::CopyOnWorkerThread(
+     if (!staging_buffer->query_id)
+       gl->GenQueriesEXT(1, &staging_buffer->query_id);
+ 
+-#if defined(OS_CHROMEOS) && defined(ARCH_CPU_ARM_FAMILY)
++#if defined(ARCH_CPU_ARM_FAMILY)
+     // TODO(reveman): This avoids a performance problem on ARM ChromeOS
+     // devices. crbug.com/580166
+     gl->BeginQueryEXT(GL_COMMANDS_ISSUED_CHROMIUM, staging_buffer->query_id);
+@@ -413,7 +413,7 @@ void OneCopyRasterBufferProvider::CopyOnWorkerThread(
+   }
+ 
+   if (resource_provider_->use_sync_query()) {
+-#if defined(OS_CHROMEOS) && defined(ARCH_CPU_ARM_FAMILY)
++#if defined(ARCH_CPU_ARM_FAMILY)
+     gl->EndQueryEXT(GL_COMMANDS_ISSUED_CHROMIUM);
+ #else
+     gl->EndQueryEXT(GL_COMMANDS_COMPLETED_CHROMIUM);
+diff --git a/cc/resources/resource_provider.cc b/cc/resources/resource_provider.cc
+index 002f10a..61b4a80 100644
+--- a/cc/resources/resource_provider.cc
++++ b/cc/resources/resource_provider.cc
+@@ -2057,7 +2057,7 @@ void ResourceProvider::LazyCreateImage(Resource* resource) {
+     GLES2Interface* gl = ContextGL();
+     DCHECK(gl);
+ 
+-#if defined(OS_CHROMEOS) && defined(ARCH_CPU_ARM_FAMILY)
++#if defined(ARCH_CPU_ARM_FAMILY)
+     // TODO(reveman): This avoids a performance problem on ARM ChromeOS
+     // devices. This only works with shared memory backed buffers.
+     // crbug.com/580166
+-- 
+2.7.4
+

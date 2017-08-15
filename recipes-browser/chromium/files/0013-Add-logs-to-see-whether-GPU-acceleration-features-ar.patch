@@ -1,0 +1,38 @@
+From 8b7ca5414c162dc47a249de8649ce297941bb11c Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Fri, 14 Jul 2017 16:05:02 -0700
+Subject: [PATCH 13/25] Add logs to see whether GPU acceleration features are
+ enabled or not
+
+---
+ media/filters/gpu_video_decoder.cc          | 1 +
+ ui/gfx/linux/client_native_pixmap_dmabuf.cc | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/media/filters/gpu_video_decoder.cc b/media/filters/gpu_video_decoder.cc
+index 6270880..6c41350 100644
+--- a/media/filters/gpu_video_decoder.cc
++++ b/media/filters/gpu_video_decoder.cc
+@@ -606,6 +606,7 @@ void GpuVideoDecoder::DismissPictureBuffer(int32_t id) {
+ 
+ void GpuVideoDecoder::PictureReady(const media::Picture& picture) {
+   DVLOG(3) << "PictureReady()";
++  VLOG(1) << "GpuVideoDecoder::PictureReady()";
+   DCheckGpuVideoAcceleratorFactoriesTaskRunnerIsCurrent();
+ 
+   PictureBufferMap::iterator it =
+diff --git a/ui/gfx/linux/client_native_pixmap_dmabuf.cc b/ui/gfx/linux/client_native_pixmap_dmabuf.cc
+index 4927daf..e3c87fa 100644
+--- a/ui/gfx/linux/client_native_pixmap_dmabuf.cc
++++ b/ui/gfx/linux/client_native_pixmap_dmabuf.cc
+@@ -138,6 +138,7 @@ ClientNativePixmapDmaBuf::~ClientNativePixmapDmaBuf() {
+ 
+ bool ClientNativePixmapDmaBuf::Map() {
+   TRACE_EVENT0("drm", "DmaBuf:Map");
++  VLOG(1) << "DmaBuf::Map";
+   if (data_ != nullptr) {
+     PrimeSyncStart(dmabuf_fd_.get());
+     return true;
+-- 
+2.7.4
+

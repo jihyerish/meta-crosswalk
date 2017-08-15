@@ -1,0 +1,45 @@
+From 21b9e324663ee220d3882d6e4b27e09b992bd815 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 17:05:22 -0700
+Subject: [PATCH 23/25] skip nullptr return to avoid crash while creating a
+ command buffer
+
+---
+ gpu/ipc/service/gpu_channel.cc | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/gpu/ipc/service/gpu_channel.cc b/gpu/ipc/service/gpu_channel.cc
+index 1e7d7c0..c71b103 100644
+--- a/gpu/ipc/service/gpu_channel.cc
++++ b/gpu/ipc/service/gpu_channel.cc
+@@ -1037,10 +1037,14 @@ std::unique_ptr<GpuCommandBufferStub> GpuChannel::CreateCommandBuffer(
+     const GPUCreateCommandBufferConfig& init_params,
+     int32_t route_id,
+     std::unique_ptr<base::SharedMemory> shared_state_shm) {
++  // FIXME(ozone-gbm): whay is_gpu_host is alway false
+   if (init_params.surface_handle != kNullSurfaceHandle && !is_gpu_host_) {
+     DLOG(ERROR) << "GpuChannel::CreateCommandBuffer(): attempt to create a "
+                    "view context on a non-privileged channel";
+-    return nullptr;
++    VLOG(1) << "GpuChannel::CreateCommandBuffer(): attempt to create a "
++                   "view context on a non-privileged channel";
++    VLOG(1) << "ozone-gbm: skip nullptr return to avoid crash";
++    //return nullptr;
+   }
+ 
+   int32_t share_group_id = init_params.share_group_id;
+@@ -1062,7 +1066,10 @@ std::unique_ptr<GpuCommandBufferStub> GpuChannel::CreateCommandBuffer(
+   if (stream_priority <= SchedulingPriority::kHigh && !is_gpu_host_) {
+     DLOG(ERROR) << "GpuChannel::CreateCommandBuffer(): high priority stream "
+                    "not allowed on a non-privileged channel";
+-    return nullptr;
++    VLOG(1) << "GpuChannel::CreateCommandBuffer(): high priority stream "
++                   "not allowed on a non-privileged channel";
++    VLOG(1) << "ozone-gbm: skip nullptr return to avoid crash";
++    //return nullptr;
+   }
+ 
+   if (share_group && !share_group->decoder()) {
+-- 
+2.7.4
+

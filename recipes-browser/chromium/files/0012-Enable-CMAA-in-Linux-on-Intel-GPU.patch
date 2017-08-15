@@ -1,0 +1,45 @@
+From 69342d0922472dbc282dc432b42627b0ed0412ab Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Thu, 13 Jul 2017 15:26:03 -0700
+Subject: [PATCH 12/25] Enable CMAA in Linux on Intel GPU
+
+---
+ .../service/gles2_cmd_apply_framebuffer_attachment_cmaa_intel.cc      | 2 +-
+ gpu/config/gpu_driver_bug_list.json                                   | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/gpu/command_buffer/service/gles2_cmd_apply_framebuffer_attachment_cmaa_intel.cc b/gpu/command_buffer/service/gles2_cmd_apply_framebuffer_attachment_cmaa_intel.cc
+index e4cdd30..6d44825 100644
+--- a/gpu/command_buffer/service/gles2_cmd_apply_framebuffer_attachment_cmaa_intel.cc
++++ b/gpu/command_buffer/service/gles2_cmd_apply_framebuffer_attachment_cmaa_intel.cc
+@@ -261,7 +261,7 @@ void ApplyFramebufferAttachmentCMAAINTELResourceManager::
+         bool color_renderable =
+             Texture::ColorRenderable(decoder->GetFeatureInfo(), internal_format,
+                                      texture->texture()->IsImmutable());
+-#if defined(OS_CHROMEOS) && defined(ARCH_CPU_X86_FAMILY)
++#if defined(ARCH_CPU_X86_FAMILY)
+         // glDrawArrays is faster than glCopyTexSubImage2D on IA Mesa driver,
+         // although opposite in Android.
+         // TODO(dshwang): After Mesa fixes this issue, remove this hack.
+diff --git a/gpu/config/gpu_driver_bug_list.json b/gpu/config/gpu_driver_bug_list.json
+index b8f5489..076f2df 100644
+--- a/gpu/config/gpu_driver_bug_list.json
++++ b/gpu/config/gpu_driver_bug_list.json
+@@ -1718,12 +1718,12 @@
+       "exceptions" : [
+         {
+           "os": {
+-            "type" : "chromeos"
++            "type" : "linux"
+           },
+           "vendor_id": "0x8086",
+           "driver_vendor": "Mesa",
+           "gl_vendor": "Intel.*",
+-          "gl_renderer": ".*Intel.*(Braswell|Broadwell|Skylake).*",
++          "gl_renderer": ".*Intel.*(Cherrytrail|Braswell|Broadwell|Skylake|Kabylake).*",
+           "gl_type": "gles",
+           "gl_version": {
+             "op": ">=",
+-- 
+2.7.4
+

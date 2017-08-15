@@ -1,0 +1,32 @@
+From 1e6cca45e7e63f54679145feeb933a1c520e364e Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Thu, 6 Jul 2017 18:01:18 -0700
+Subject: [PATCH 09/25] Check the number of displays befor removing it
+
+---
+ services/ui/display/screen_manager_ozone_internal.cc | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/services/ui/display/screen_manager_ozone_internal.cc b/services/ui/display/screen_manager_ozone_internal.cc
+index e6d031d..cb64c6d 100644
+--- a/services/ui/display/screen_manager_ozone_internal.cc
++++ b/services/ui/display/screen_manager_ozone_internal.cc
+@@ -322,8 +322,13 @@ void ScreenManagerOzoneInternal::OnDisplayRemoved(const Display& display) {
+   // a new primary display. This will crash until then.
+ 
+   DVLOG(1) << "OnDisplayRemoved: " << display.ToString();
+-  screen_->display_list().RemoveDisplay(display.id());
+-  delegate_->OnDisplayRemoved(display.id());
++
++  if (screen_->display_list().displays().size() > 0 ) {
++    screen_->display_list().RemoveDisplay(display.id());
++    delegate_->OnDisplayRemoved(display.id());
++  } else {
++    printf("  display size  is 0\n");
++  }
+ }
+ 
+ void ScreenManagerOzoneInternal::OnDisplayMetricsChanged(
+-- 
+2.7.4
+

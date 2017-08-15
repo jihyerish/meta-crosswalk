@@ -1,0 +1,37 @@
+From 55ae4aea6de3704b5a7558e0505518c4177a016e Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 17:09:27 -0700
+Subject: [PATCH 22/25] Debug: command buffer
+
+---
+ gpu/ipc/client/command_buffer_proxy_impl.cc                   | 1 +
+ services/ui/public/cpp/gpu/context_provider_command_buffer.cc | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/gpu/ipc/client/command_buffer_proxy_impl.cc b/gpu/ipc/client/command_buffer_proxy_impl.cc
+index 6d269fd..01a2fb7 100644
+--- a/gpu/ipc/client/command_buffer_proxy_impl.cc
++++ b/gpu/ipc/client/command_buffer_proxy_impl.cc
+@@ -228,6 +228,7 @@ bool CommandBufferProxyImpl::Initialize(
+       config, route_id_, handle, &result, &capabilities_));
+   if (!sent || !result) {
+     DLOG(ERROR) << "Failed to send GpuChannelMsg_CreateCommandBuffer.";
++    VLOG(1) << "ozone-gbm: Failed to send GpuChannelMsg_CreateCommandBuffer.";
+     channel->RemoveRoute(route_id_);
+     return false;
+   }
+diff --git a/services/ui/public/cpp/gpu/context_provider_command_buffer.cc b/services/ui/public/cpp/gpu/context_provider_command_buffer.cc
+index da0f48d..3472188 100644
+--- a/services/ui/public/cpp/gpu/context_provider_command_buffer.cc
++++ b/services/ui/public/cpp/gpu/context_provider_command_buffer.cc
+@@ -260,6 +260,7 @@ bool ContextProviderCommandBuffer::BindToCurrentThread() {
+         stream_priority_, attributes_, active_url_, task_runner);
+     if (!command_buffer_) {
+       DLOG(ERROR) << "GpuChannelHost failed to create command buffer.";
++      VLOG(1) << "ozone-gbm: GpuChannelHost failed to create command buffer.";
+       command_buffer_metrics::UmaRecordContextInitFailed(context_type_);
+       return false;
+     }
+-- 
+2.7.4
+

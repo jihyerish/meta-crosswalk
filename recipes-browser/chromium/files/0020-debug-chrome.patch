@@ -1,0 +1,24 @@
+From b82097c90199b16f081cae4b1230d9d8b2e6c880 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Mon, 14 Aug 2017 15:25:01 -0700
+Subject: [PATCH 20/25] debug: chrome
+
+---
+ chrome/app/chrome_main_delegate.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index d3f3c7b..955a238 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -1149,6 +1149,7 @@ void ChromeMainDelegate::AdjustServiceProcessCommandLine(
+                                   is_mash ? switches::kMash : switches::kMus);
+ 
+   if (identity.name() == content::mojom::kPackagedServicesServiceName) {
++    VLOG(1) << "ozone-gbm: Start Chromium Browser";
+     // Ensure the browser process doesn't inherit mash or mus flags, since these
+     // flags would cause the process to run as a Service Manager instead.
+     base::CommandLine::SwitchMap switches = command_line->GetSwitches();
+-- 
+2.7.4
+

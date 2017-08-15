@@ -1,0 +1,94 @@
+From 950e0993863e294154179f3871afd8085e5e3cf0 Mon Sep 17 00:00:00 2001
+From: Joone Hur <joone.hur@intel.com>
+Date: Tue, 18 Jul 2017 20:37:37 -0700
+Subject: [PATCH 14/25] Add support for native gpu memory buffer for Chromium
+ ozone-gbm
+
+This feature is only enable in CrOS so we need to enable it for
+ozone-gbm.
+---
+ gpu/command_buffer/common/gpu_memory_buffer_support.cc |  2 +-
+ ui/gfx/linux/client_native_pixmap_factory_dmabuf.cc    | 11 -----------
+ ui/ozone/platform/drm/gpu/gbm_surface_factory.cc       |  5 -----
+ 3 files changed, 1 insertion(+), 17 deletions(-)
+
+diff --git a/gpu/command_buffer/common/gpu_memory_buffer_support.cc b/gpu/command_buffer/common/gpu_memory_buffer_support.cc
+index 481f0b2..0ef4419 100644
+--- a/gpu/command_buffer/common/gpu_memory_buffer_support.cc
++++ b/gpu/command_buffer/common/gpu_memory_buffer_support.cc
+@@ -110,7 +110,7 @@ bool IsImageFromGpuMemoryBufferFormatSupported(
+     case gfx::BufferFormat::RGBA_F16:
+       return capabilities.texture_half_float_linear;
+     case gfx::BufferFormat::YUV_420_BIPLANAR:
+-#if defined(OS_CHROMEOS) && defined(ARCH_CPU_ARM_FAMILY)
++#if defined(ARCH_CPU_ARM_FAMILY)
+       // TODO(dcastagna): Determine ycbcr_420v_image on CrOS at runtime
+       // querying minigbm. crbug.com/646148
+       return true;
+diff --git a/ui/gfx/linux/client_native_pixmap_factory_dmabuf.cc b/ui/gfx/linux/client_native_pixmap_factory_dmabuf.cc
+index a91e506..f91a4d0 100644
+--- a/ui/gfx/linux/client_native_pixmap_factory_dmabuf.cc
++++ b/ui/gfx/linux/client_native_pixmap_factory_dmabuf.cc
+@@ -11,12 +11,10 @@
+ #include "base/trace_event/trace_event.h"
+ #include "ui/gfx/native_pixmap_handle.h"
+ 
+-#if defined(OS_CHROMEOS)
+ // This can be enabled on all linux but it is not a requirement to support
+ // glCreateImageChromium+Dmabuf since it uses gfx::BufferUsage::SCANOUT and
+ // the pixmap does not need to be mappable on the client side.
+ #include "ui/gfx/linux/client_native_pixmap_dmabuf.h"
+-#endif
+ 
+ namespace gfx {
+ 
+@@ -70,7 +68,6 @@ class ClientNativePixmapFactoryDmabuf : public ClientNativePixmapFactory {
+                format == gfx::BufferFormat::RGBA_8888;
+       case gfx::BufferUsage::GPU_READ_CPU_READ_WRITE:
+       case gfx::BufferUsage::GPU_READ_CPU_READ_WRITE_PERSISTENT: {
+-#if defined(OS_CHROMEOS)
+         return
+ #if defined(ARCH_CPU_X86_FAMILY)
+             // Currently only Intel driver (i.e. minigbm and Mesa) supports R_8
+@@ -79,9 +76,6 @@ class ClientNativePixmapFactoryDmabuf : public ClientNativePixmapFactory {
+             format == gfx::BufferFormat::RG_88 ||
+ #endif
+             format == gfx::BufferFormat::BGRA_8888;
+-#else
+-        return false;
+-#endif
+       }
+     }
+     NOTREACHED();
+@@ -96,12 +90,7 @@ class ClientNativePixmapFactoryDmabuf : public ClientNativePixmapFactory {
+       case gfx::BufferUsage::SCANOUT_CPU_READ_WRITE:
+       case gfx::BufferUsage::GPU_READ_CPU_READ_WRITE:
+       case gfx::BufferUsage::GPU_READ_CPU_READ_WRITE_PERSISTENT:
+-#if defined(OS_CHROMEOS)
+         return ClientNativePixmapDmaBuf::ImportFromDmabuf(handle, size);
+-#else
+-        NOTREACHED();
+-        return nullptr;
+-#endif
+       case gfx::BufferUsage::GPU_READ:
+       case gfx::BufferUsage::SCANOUT:
+         // Close all the fds.
+diff --git a/ui/ozone/platform/drm/gpu/gbm_surface_factory.cc b/ui/ozone/platform/drm/gpu/gbm_surface_factory.cc
+index 5de359d..908bac4 100644
+--- a/ui/ozone/platform/drm/gpu/gbm_surface_factory.cc
++++ b/ui/ozone/platform/drm/gpu/gbm_surface_factory.cc
+@@ -142,11 +142,6 @@ scoped_refptr<gfx::NativePixmap> GbmSurfaceFactory::CreateNativePixmap(
+     gfx::Size size,
+     gfx::BufferFormat format,
+     gfx::BufferUsage usage) {
+-#if !defined(OS_CHROMEOS)
+-  // Support for memory mapping accelerated buffers requires some
+-  // CrOS-specific patches (using dma-buf mmap API).
+-  DCHECK(gfx::BufferUsage::SCANOUT == usage);
+-#endif
+ 
+   scoped_refptr<GbmBuffer> buffer =
+       drm_thread_proxy_->CreateBuffer(widget, size, format, usage);
+-- 
+2.7.4
+
