@@ -14,10 +14,10 @@ $ git clone https://github.com/imyller/meta-nodejs.git
 $ git clone git://git.yoctoproject.org/meta-intel.git
 $ git clone git://git.openembedded.org/meta-openembedded
 ```
-### Checkout chromium58 branch.
+### Checkout chromium60 branch.
 ```
 $ cd meta-crosswalk
-$ git checkout chromium58_gbm
+$ git checkout chromium60_gbm
 $ cd ../yocto/poky
 $ source oe-init-build-env
 $ cd build
