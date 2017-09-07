@@ -115,15 +115,36 @@ $ /usr/lib/chromium/mash --service=mus_demo
 ```
 Run chromium
 ```
-$ /usr/lib/chromium/chrome https://webglsamples.org/aquarium/aquarium.html --mash --no-sandbox --window-manager=simple_wm --ash-host-window-bounds=2160x1440
+$ /usr/lib/chromium/chrome https://github.com/joone/wiki/blob/master/performance_test_web_graphics.md
+ --mash --no-sandbox --window-manager=simple_wm --ash-host-window-bounds=2160x1440
 
 ```
 Run mash session
 ```
-$ /usr/lib/chromium/mash https://webglsamples.org/aquarium/aquarium.html --service=mash_session --no-sandbox --window-manager=simple_wm --ash-host-window-bounds=2160x1440
+$ /usr/lib/chromium/mash https://github.com/joone/wiki/blob/master/performance_test_web_graphics.md
+ --service=mash_session --no-sandbox --window-manager=simple_wm --ash-host-window-bounds=2160x1440
 ```
 If your display resolution is 1920x1080, you don't need to pass --ash-host-window-bounds parameter.
 
+Show frame rate counter and GPU memory usage
+```
+--show-fps-counter --vmodule="head*=1" --enable-logging=stderr
+```
+Enable zero-copy texture upload
+```
+--enable-native-gpu-memory-buffers  --use-gl=egl
+
+```
+Show log information
+```
+--enable-logging=stderr --v=2
+```
+
+Example
+```
+$ ./mash https://github.com/joone/wiki/blob/master/performance_test_web_graphics.md --service=mash_session  --no-sandbox  --window-manager=simple_wm --enable-native-gpu-memory-buffers --use-gl=egl  --show-fps-counter --vmodule="head*=1" --enable-logging=stderr --v=2 --proxy-pac-url=http://autoproxy.intel.com 
+```
+ 
 ## Build Chromium external source
 The current Yocto recipe only works with the stable release of Chromium so there might be many build issues with ToT, but you can try it out.
 ```
@@ -133,7 +154,7 @@ EXTERNALSRC_pn-chromium = "/home/joone/otc/chromium/src"
 
 ## Tips
 
-## Proxy suooirt
+## Proxy support
 When mash or chrome launches, we can pass a proxy auto-config (PAC) file as runtime parameter as follow:
 ```
 --proxy-pac-url=URL
@@ -159,6 +180,7 @@ $ cd ~yocto/poky/build/tmp/work/core2-64-poky-linux/chromium/58.0.3029.110-r0/ch
 ```
 $ bitbake -f -c compile chromium
 ```
+
 ## References
 * https://layers.openembedded.org/layerindex/branch/master/recipes/
 * http://www.yoctoproject.org/docs/latest/yocto-project-qs/yocto-project-qs.html
