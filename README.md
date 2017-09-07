@@ -116,13 +116,13 @@ $ /usr/lib/chromium/mash --service=mus_demo
 Run chromium
 ```
 $ /usr/lib/chromium/chrome https://github.com/joone/wiki/blob/master/performance_test_web_graphics.md
- --mash --no-sandbox --window-manager=simple_wm --ash-host-window-bounds=2160x1440
+ --mash --no-sandbox --use-data-dir=/home/root/ --window-manager=simple_wm --ash-host-window-bounds=2160x1440
 
 ```
 Run mash session
 ```
 $ /usr/lib/chromium/mash https://github.com/joone/wiki/blob/master/performance_test_web_graphics.md
- --service=mash_session --no-sandbox --window-manager=simple_wm --ash-host-window-bounds=2160x1440
+ --service=mash_session --no-sandbox --use-data-dir=/home/root/ --window-manager=simple_wm --ash-host-window-bounds=2160x1440
 ```
 If your display resolution is 1920x1080, you don't need to pass --ash-host-window-bounds parameter.
 
@@ -142,7 +142,7 @@ Show log information
 
 Example
 ```
-$ ./mash https://github.com/joone/wiki/blob/master/performance_test_web_graphics.md --service=mash_session  --no-sandbox  --window-manager=simple_wm --enable-native-gpu-memory-buffers --use-gl=egl  --show-fps-counter --vmodule="head*=1" --enable-logging=stderr --v=2 --proxy-pac-url=http://autoproxy.intel.com 
+$ ./mash https://github.com/joone/wiki/blob/master/performance_test_web_graphics.md --service=mash_session  --no-sandbox --use-data-dir=/home/root/  --window-manager=simple_wm --enable-native-gpu-memory-buffers --use-gl=egl  --show-fps-counter --vmodule="head*=1" --enable-logging=stderr --v=2 --proxy-pac-url=http://autoproxy.intel.com 
 ```
  
 ## Build Chromium external source
