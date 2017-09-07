@@ -24,6 +24,7 @@ SRC_URI += " \
         file://0011-Add-logs-to-see-whether-GPU-acceleration-features-ar.patch \
         file://0012-Add-support-for-native-gpu-memory-buffer-for-Chromiu.patch \
         file://0013-Intel-GPU-specific-optimization-in-GLES.patch \
+        file://zero-copy-texture-upload.patch \
         ${@bb.utils.contains('PACKAGECONFIG', 'root-profile', 'file://root-user-profile.patch', '', d)} \
         "
 

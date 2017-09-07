@@ -1,0 +1,87 @@
+commit bbd8692850851a677f215c6355ff5f164f2995fc
+Author: Joone Hur <joone.hur@intel.com>
+Date:   Tue Sep 5 19:51:45 2017 -0700
+
+    enable zero-copy texture upload
+
+diff --git a/gpu/ipc/client/gpu_memory_buffer_impl.cc b/gpu/ipc/client/gpu_memory_buffer_impl.cc
+index a673cbf..2d4d788 100644
+--- a/gpu/ipc/client/gpu_memory_buffer_impl.cc
++++ b/gpu/ipc/client/gpu_memory_buffer_impl.cc
+@@ -43,6 +43,7 @@ std::unique_ptr<GpuMemoryBufferImpl> GpuMemoryBufferImpl::CreateFromHandle(
+     const DestructionCallback& callback) {
+   switch (handle.type) {
+     case gfx::SHARED_MEMORY_BUFFER:
++      VLOG(1) << "GpuMemoryBufferImpl::CreateFromHandle: create a shared memory buffer";
+       return GpuMemoryBufferImplSharedMemory::CreateFromHandle(
+           handle, size, format, usage, callback);
+ #if defined(OS_MACOSX)
+@@ -52,6 +53,7 @@ std::unique_ptr<GpuMemoryBufferImpl> GpuMemoryBufferImpl::CreateFromHandle(
+ #endif
+ #if defined(USE_OZONE)
+     case gfx::OZONE_NATIVE_PIXMAP:
++      VLOG(1) << "GpuMemoryBufferImpl::CreateFromHandle: create a native pixmap for ozone";
+       return GpuMemoryBufferImplOzoneNativePixmap::CreateFromHandle(
+           handle, size, format, usage, callback);
+ #endif
+diff --git a/ui/aura/env.cc b/ui/aura/env.cc
+index 0b6b67f..dfd1f00 100644
+--- a/ui/aura/env.cc
++++ b/ui/aura/env.cc
+@@ -23,6 +23,7 @@
+ 
+ #if defined(USE_OZONE)
+ #include "ui/ozone/public/ozone_platform.h"
++#include "ui/ozone/public/client_native_pixmap_factory.h"
+ #endif
+ 
+ namespace aura {
+@@ -175,6 +176,7 @@ Env::Env(Mode mode)
+       is_touch_down_(false),
+       get_last_mouse_location_from_mus_(mode_ == Mode::MUS),
+       input_state_lookup_(InputStateLookup::Create()),
++      native_pixmap_factory_(ui::ClientNativePixmapFactory::Create()),
+       context_factory_(nullptr),
+       context_factory_private_(nullptr) {
+   DCHECK(lazy_tls_ptr.Pointer()->Get() == NULL);
+@@ -182,13 +184,16 @@ Env::Env(Mode mode)
+ }
+ 
+ void Env::Init() {
+-  if (RunningInsideMus())
++  if (RunningInsideMus()) {
++    ui::ClientNativePixmapFactory::SetInstance(native_pixmap_factory_.get());
+     return;
++  }
+ #if defined(USE_OZONE)
+   // The ozone platform can provide its own event source. So initialize the
+   // platform before creating the default event source. If running inside mus
+   // let the mus process initialize ozone instead.
+   ui::OzonePlatform::InitializeForUI();
++  ui::ClientNativePixmapFactory::SetInstance(native_pixmap_factory_.get());
+ #endif
+   if (!ui::PlatformEventSource::GetInstance())
+     event_source_ = ui::PlatformEventSource::CreateDefault();
+diff --git a/ui/aura/env.h b/ui/aura/env.h
+index f843ca0..eaa424e 100644
+--- a/ui/aura/env.h
++++ b/ui/aura/env.h
+@@ -15,6 +15,10 @@
+ #include "ui/events/event_target.h"
+ #include "ui/gfx/geometry/point.h"
+ 
++#if defined(USE_OZONE)
++#include "ui/ozone/public/client_native_pixmap_factory.h"
++#endif
++
+ namespace ui {
+ class ContextFactory;
+ class ContextFactoryPrivate;
+@@ -156,6 +160,7 @@ class AURA_EXPORT Env : public ui::EventTarget, public base::SupportsUserData {
+ 
+   std::unique_ptr<InputStateLookup> input_state_lookup_;
+   std::unique_ptr<ui::PlatformEventSource> event_source_;
++  std::unique_ptr<ui::ClientNativePixmapFactory> native_pixmap_factory_;
+ 
+   ui::ContextFactory* context_factory_;
+   ui::ContextFactoryPrivate* context_factory_private_;
