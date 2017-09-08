@@ -25,6 +25,7 @@ SRC_URI += " \
         file://0012-Add-support-for-native-gpu-memory-buffer-for-Chromiu.patch \
         file://0013-Intel-GPU-specific-optimization-in-GLES.patch \
         file://zero-copy-texture-upload.patch \
+        file://video_acceleration.patch \
         ${@bb.utils.contains('PACKAGECONFIG', 'root-profile', 'file://root-user-profile.patch', '', d)} \
         "
 
@@ -52,6 +53,7 @@ DEPENDS = "\
     hicolor-icon-theme \
     jpeg \
     libwebp \
+    libva \
     libxml2 \
     libxslt \
     libxtst \
@@ -80,7 +82,6 @@ PACKAGECONFIG[ftp] = "disable_ftp_support=false,disable_ftp_support=true"
 # responsibility to ensure you are complying with all required licenses.
 PACKAGECONFIG[proprietary-codecs] = '\
         ffmpeg_branding="Chrome" proprietary_codecs=true, \
-        ffmpeg_branding="Chromium" proprietary_codecs=false \
         '
 # root-profile: If enabled, adds a patch to the Chromium binary wrapper that
 # automatically sets root's user profile directory to /root/chromium-profile.
@@ -104,6 +105,7 @@ GN_ARGS = "\
         use_gconf=false \
         use_gnome_keyring=false \
         use_kerberos=false \
+        ffmpeg_branding="Chrome" \
         use_pulseaudio=${@bb.utils.contains('DISTRO_FEATURES', 'pulseaudio', 'true', 'false', d)} \
         use_system_libjpeg=true \
         "
@@ -165,6 +167,8 @@ GN_ARGS += "enable_package_mash_services = true"
 
 # VA support
 GN_ARGS += "proprietary_codecs=true"
+GN_ARGS += "use_v4l2_codec = false"
+GN_ARGS += "enable_media_codec_video_decoder = true"
 
 # API keys for accessing Google services. By default, we use an invalid key
 # only to prevent the "you are missing an API key" infobar from being shown on
@@ -264,7 +268,7 @@ do_configure() {
 }
 
 do_compile() {
-    DRV_I915=1 ninja -v "${PARALLEL_MAKE}" chrome chrome_sandbox ozone_demo gbm_unittests mash:all mus_demo
+    DRV_I915=1 ninja -v "${PARALLEL_MAKE}" chrome chrome_sandbox ozone_demo gbm_unittests mash:all mus_demo video_decode_accelerator_unittest
 }
 
 do_install() {
